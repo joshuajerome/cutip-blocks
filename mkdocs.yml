@@ -1,0 +1,74 @@
+site_name: CUTIP Blocks
+site_description: >
+  Reusable workflow blocks for CUTIP — container, SSH, k8s, file operations and more.
+site_url: https://joshuajerome.github.io/cutip-blocks
+repo_url: https://github.com/joshuajerome/cutip-blocks
+repo_name: joshuajerome/cutip-blocks
+edit_uri: edit/integration/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+
+plugins:
+  - search
+  - callouts
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - tables
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
+      title: On this page
+
+nav:
+  - Home: index.md
+  - Block Reference:
+    - Container: blocks/container.md
+    - SSH: blocks/ssh.md
+    - File: blocks/file.md
+    - Kubernetes: blocks/k8s.md
+    - crictl: blocks/crictl.md
+    - Download: blocks/download.md
+    - Config: blocks/config.md
+    - Validate: blocks/validate.md
+    - Service: blocks/service.md
+  - Development:
+    - Capabilities: capabilities.md
+    - Patch Notes: patch-notes.md

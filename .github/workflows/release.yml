@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - integration
+    paths:
+      - "release/**"
+  delete:
+    branches:
+      - "release/**"
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run ty check cutip_blocks/
+
+      - name: Unit tests
+        run: uv run pytest tests/ -v
+
+  build:
+    name: Build & Release
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(uv run python -c "from importlib.metadata import version; print(version('cutip-blocks'))" 2>/dev/null || \
+            grep 'version' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
