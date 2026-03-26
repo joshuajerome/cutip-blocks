@@ -1,6 +1,6 @@
 """Tests for @block decorator and BlockMeta."""
 
-from cutip_blocks.decorator import BlockMeta, _BLOCK_ATTR, block
+from cutip_blocks.decorator import _BLOCK_ATTR, BlockMeta, block
 
 
 def test_block_decorator_attaches_meta():
