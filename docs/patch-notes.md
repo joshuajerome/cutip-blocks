@@ -9,3 +9,4 @@
 - `BlockRegistry.discover()` auto-finds all blocks via `pkgutil`
 - `SSHSession` with credential redaction and persistent connection reuse
 - Structured logging with `[BlockName]` prefix on all block executions
+# v0.1.1
