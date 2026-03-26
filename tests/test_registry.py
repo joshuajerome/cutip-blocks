@@ -22,7 +22,7 @@ def test_get_by_category_and_action():
     registry = BlockRegistry.discover()
     result = registry.get("k8s", "get_secret")
     assert result is not None
-    meta, fn = result
+    meta, _fn = result
     assert meta.name == "Get Secret"
     assert meta.category == "k8s"
     assert meta.action == "get_secret"

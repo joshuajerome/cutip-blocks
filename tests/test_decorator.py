@@ -35,6 +35,6 @@ def test_block_meta_is_frozen():
     meta = BlockMeta(name="X", category="y", action="z")
     try:
         meta.name = "changed"
-        assert False, "Should have raised"
+        raise AssertionError("Should have raised")
     except AttributeError:
         pass
