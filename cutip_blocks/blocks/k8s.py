@@ -74,19 +74,91 @@ def get_pod(
     *,
     namespace: str,
     deployment: str,
-    output: str = "jsonpath='{.items[0].metadata.name}'",
+    output: str | None = None,
 ) -> ExecResult:
-    """Get pod(s) for a deployment by label selector."""
+    """Find a pod matching a deployment name via JSON inspection.
+
+    Queries all pods in the namespace as JSON, finds pods whose name
+    starts with the deployment name (excluding the replica-set hash suffix).
+
+    - 1 match → uses it
+    - Multiple matches → selects the first Running pod, warns about others
+    - 0 matches → errors with list of available pods for debugging
+
+    If ``output`` is specified, runs a follow-up query with ``-o <output>``
+    against the discovered pod name.
+    """
+    import json as _json
+
+    # Get all pods as JSON (no grep dependency)
     result = _kubectl(
         sesh,
-        f"get pod -n {namespace} -l app={deployment} -o {output}",
+        f"get pod -n {namespace} -o json",
         block_name="Get Pod",
     )
     if result.exit_code != 0:
         raise RuntimeError(
-            f"No pods found for deployment {deployment} in {namespace}: {result.stderr.strip()}"
+            f"Failed to list pods in namespace {namespace}: {result.stderr.strip()}"
         )
-    return result
+
+    try:
+        data = _json.loads(result.stdout)
+    except _json.JSONDecodeError:
+        raise RuntimeError(f"Failed to parse pod list JSON from namespace {namespace}")
+
+    items = data.get("items", [])
+
+    # Find pods whose name starts with the deployment name
+    matches: list[dict] = []
+    all_pod_names: list[str] = []
+    for pod in items:
+        pod_name = pod.get("metadata", {}).get("name", "")
+        all_pod_names.append(pod_name)
+        if pod_name.startswith(deployment):
+            phase = pod.get("status", {}).get("phase", "Unknown")
+            matches.append({"name": pod_name, "phase": phase})
+
+    if not matches:
+        available = ", ".join(all_pod_names[:10]) or "(none)"
+        raise RuntimeError(
+            f"No pods matching '{deployment}' in namespace {namespace}. "
+            f"Available pods: {available}"
+        )
+
+    # Prefer Running pods
+    running = [m for m in matches if m["phase"] == "Running"]
+    selected = running[0] if running else matches[0]
+
+    if len(matches) > 1:
+        logger.warning(
+            "[Get Pod] Multiple pods match '{}': {}. Using: {} ({})",
+            deployment,
+            ", ".join(f"{m['name']} ({m['phase']})" for m in matches),
+            selected["name"],
+            selected["phase"],
+        )
+    else:
+        logger.info("[Get Pod] Found pod: {} ({})", selected["name"], selected["phase"])
+
+    # Build result with the pod name in stdout
+    pod_result = ExecResult(
+        exit_code=0,
+        stdout=selected["name"],
+        stderr="",
+    )
+
+    if output:
+        pod_result = _kubectl(
+            sesh,
+            f"get pod -n {namespace} {selected['name']} -o {output}",
+            block_name="Get Pod",
+        )
+        if pod_result.exit_code != 0:
+            raise RuntimeError(
+                f"Failed to query pod {selected['name']}: {pod_result.stderr.strip()}"
+            )
+
+    return pod_result
 
 
 @block(name="Exec in Pod", category="k8s", action="exec")
@@ -125,12 +197,9 @@ def cp(
 
     Resolves the pod name from the deployment label, then runs kubectl cp.
     """
-    # Get pod name
-    pod_result = get_pod(
-        ctx, sesh, namespace=namespace, deployment=deployment,
-        output="jsonpath='{.items[0].metadata.name}'",
-    )
-    pod_name = pod_result.stdout.strip().strip("'")
+    # Get pod name via grep
+    pod_result = get_pod(ctx, sesh, namespace=namespace, deployment=deployment)
+    pod_name = pod_result.stdout.strip()
 
     result = _kubectl(
         sesh,
