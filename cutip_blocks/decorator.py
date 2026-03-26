@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Callable
 
 _BLOCK_ATTR = "_cutip_block_meta"
 

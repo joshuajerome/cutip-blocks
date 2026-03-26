@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json as _json
-import tempfile
 
 from loguru import logger
 
@@ -88,7 +87,6 @@ def get_pod(
     If ``output`` is specified, runs a follow-up query with ``-o <output>``
     against the discovered pod name.
     """
-    import json as _json
 
     # Get all pods as JSON (no grep dependency)
     result = _kubectl(
@@ -97,9 +95,7 @@ def get_pod(
         block_name="Get Pod",
     )
     if result.exit_code != 0:
-        raise RuntimeError(
-            f"Failed to list pods in namespace {namespace}: {result.stderr.strip()}"
-        )
+        raise RuntimeError(f"Failed to list pods in namespace {namespace}: {result.stderr.strip()}")
 
     try:
         data = _json.loads(result.stdout)
@@ -121,8 +117,7 @@ def get_pod(
     if not matches:
         available = ", ".join(all_pod_names[:10]) or "(none)"
         raise RuntimeError(
-            f"No pods matching '{deployment}' in namespace {namespace}. "
-            f"Available pods: {available}"
+            f"No pods matching '{deployment}' in namespace {namespace}. Available pods: {available}"
         )
 
     # Prefer Running pods
@@ -286,7 +281,10 @@ def patch_deployment(
     patched_yaml = yaml.dump(deploy_yaml, default_flow_style=False)
     remote_file = f"/tmp/cutip-patch-{deployment}.yaml"
 
-    sesh.exec(f"cat > {remote_file} << 'CUTIP_EOF'\n{patched_yaml}CUTIP_EOF", block_name="Patch Deployment")
+    sesh.exec(
+        f"cat > {remote_file} << 'CUTIP_EOF'\n{patched_yaml}CUTIP_EOF",
+        block_name="Patch Deployment",
+    )
     apply_result = _kubectl(sesh, f"apply -f {remote_file}", block_name="Patch Deployment")
     sesh.exec(f"rm -f {remote_file}", block_name="Patch Deployment")
 

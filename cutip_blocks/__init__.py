@@ -3,4 +3,4 @@
 from cutip_blocks.decorator import BlockMeta, block
 from cutip_blocks.registry import BlockRegistry
 
-__all__ = ["block", "BlockMeta", "BlockRegistry"]
+__all__ = ["BlockMeta", "BlockRegistry", "block"]
