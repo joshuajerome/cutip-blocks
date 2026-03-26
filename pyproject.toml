@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cutip-blocks"
-version = "0.1.0"
+version = "0.1.1"
 description = "Reusable workflow blocks for CUTIP — container, SSH, k8s, file, and more"
 readme = "README.md"
 license = { text = "MIT" }
