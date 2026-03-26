@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-from typing import Callable
+from collections.abc import Callable
 
-from cutip_blocks.decorator import BlockMeta, _BLOCK_ATTR
+from cutip_blocks.decorator import _BLOCK_ATTR, BlockMeta
 
 
 class BlockRegistry:

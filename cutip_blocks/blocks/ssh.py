@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from loguru import logger
 
@@ -65,7 +65,7 @@ class SSHSession:
             hostname=self._host,
             port=self._port,
             username=self._username,
-            password=list(self._redact)[0],  # the original password
+            password=next(iter(self._redact)),  # the original password
             timeout=30,
             allow_agent=False,
             look_for_keys=False,
@@ -102,7 +102,11 @@ class SSHSession:
         if exit_code != 0:
             logger.warning(
                 "{}ssh {}@{} :: {} [exit {}]",
-                prefix, self._username, self._host, display_cmd, exit_code,
+                prefix,
+                self._username,
+                self._host,
+                display_cmd,
+                exit_code,
             )
 
         return ExecResult(exit_code=exit_code, stdout=stdout, stderr=stderr)
