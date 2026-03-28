@@ -11,3 +11,4 @@
 - Structured logging with `[BlockName]` prefix on all block executions
 # v0.1.1
 # v0.1.1 retry
+# v0.2.0
