@@ -84,11 +84,15 @@ def replace(ctx, *, path: str | Path, old: str, new: str) -> Path:
     return path
 
 
-@block(name="Is Empty", category="file", action="is_empty")
 def is_empty(value: str | bytes | None) -> bool:
-    """Check if a value (file content, command output) is empty or None."""
-    if value is None:
-        return True
-    if isinstance(value, bytes):
-        return len(value.strip()) == 0
-    return len(value.strip()) == 0
+    """.. deprecated:: 0.2.0 Use ``from cutip_blocks.utils import is_empty``."""
+    import warnings
+
+    warnings.warn(
+        "file.is_empty() is deprecated. Use 'from cutip_blocks.utils import is_empty'.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from cutip_blocks.utils import is_empty as _is_empty
+
+    return _is_empty(value)

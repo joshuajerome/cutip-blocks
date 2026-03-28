@@ -1,7 +1,16 @@
-"""SSH blocks — session management, exec, and probe."""
+"""SSH blocks — session management, exec, and probe.
+
+Usage::
+
+    with ssh.connect(ctx, container="my-app", host="10.0.0.1",
+                     username="root", password=pw) as sesh:
+        sesh.probe()
+        sesh.exec("ls /tmp")
+"""
 
 from __future__ import annotations
 
+import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -20,13 +29,12 @@ class ExecResult:
 
 
 class SSHSession:
-    """Persistent SSH session through a container to a remote host.
+    """Persistent SSH session. Created via ``ssh.connect()``.
 
-    Holds a paramiko channel open for the lifetime of the ``with`` block.
-    All commands execute over the same connection — no per-call handshake.
-
-    Credentials passed at init are stored only for connection setup and
-    are redacted from all log output.
+    Methods:
+        exec(cmd): Run ``ssh <user>@<host> '<cmd>'``
+        probe(): Run ``ssh <user>@<host> 'whoami'``
+        close(): Close the connection
     """
 
     def __init__(
@@ -47,25 +55,16 @@ class SSHSession:
         self._redact: set[str] = {password}
         self._client = None
 
-    def connect(self) -> None:
-        """Open the SSH connection."""
+    def _connect(self) -> None:
         import paramiko
 
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if self._container_runtime and self._container_name:
-            # Execute SSH through container — the container has network access
-            self._via_container = True
-        else:
-            self._via_container = False
-
-        # Direct paramiko connection (from host or from container context)
         self._client.connect(
             hostname=self._host,
             port=self._port,
             username=self._username,
-            password=next(iter(self._redact)),  # the original password
+            password=next(iter(self._redact)),
             timeout=30,
             allow_agent=False,
             look_for_keys=False,
@@ -81,11 +80,19 @@ class SSHSession:
             self._client = None
 
     def exec(self, cmd: str, *, block_name: str = "") -> ExecResult:
-        """Execute a command over the SSH session.
+        """Run ``ssh <user>@<host> '<cmd>'``.
 
         Args:
-            cmd: Shell command string (pipes, redirects, etc. are valid).
-            block_name: Optional block name for log prefix.
+            cmd: Shell command string. Pipes, redirects, and chaining are valid.
+            block_name: Optional prefix for log messages.
+
+        Returns:
+            ExecResult with exit_code, stdout, and stderr.
+
+        Example::
+
+            sesh.exec("whoami")
+            sesh.exec("kubectl get pods -n prod | grep web")
         """
         if self._client is None:
             raise RuntimeError("SSH session is not connected")
@@ -111,8 +118,23 @@ class SSHSession:
 
         return ExecResult(exit_code=exit_code, stdout=stdout, stderr=stderr)
 
+    def probe(self) -> ExecResult:
+        """Run ``ssh <user>@<host> 'whoami'`` to verify connectivity.
+
+        Returns:
+            ExecResult with the username in stdout.
+
+        Example::
+
+            sesh.probe()  # logs: "Authenticated as: root"
+        """
+        result = self.exec("whoami", block_name="SSH Probe")
+        if result.exit_code != 0:
+            raise RuntimeError(f"SSH probe failed: {result.stderr.strip()}")
+        logger.info("[SSH Probe] Authenticated as: {}", result.stdout.strip())
+        return result
+
     def _redact_str(self, text: str) -> str:
-        """Replace known secrets in text with ****."""
         result = text
         for secret in self._redact:
             if secret and secret in result:
@@ -121,27 +143,26 @@ class SSHSession:
 
 
 @contextmanager
-def session(
-    ctx,
-    *,
-    container: str,
-    host: str,
-    username: str,
-    password: str,
-    port: int = 22,
-):
-    """Context manager that opens a persistent SSH session through a container.
+def connect(ctx, *, container: str, host: str, username: str, password: str, port: int = 22):
+    """Open a persistent SSH session through a container.
 
-    Usage::
+    Args:
+        ctx: CutipContext.
+        container: Container name with network access to the host.
+        host: Remote host IP or hostname.
+        username: SSH username.
+        password: SSH password (redacted from all logs).
+        port: SSH port (default 22).
 
-        with ssh.session(ctx, container="my-container",
-                         host="10.0.0.1", username="root",
-                         password=ctx.config["password"]) as sesh:
-            sesh.exec("whoami")
-            k8s.get_pod(ctx, sesh, namespace="default", deployment="web")
+    Yields:
+        SSHSession with ``.exec(cmd)`` and ``.probe()`` methods.
 
-    The session opens one SSH connection and reuses it for all commands
-    within the ``with`` block.
+    Example::
+
+        with ssh.connect(ctx, container="my-app", host="10.0.0.1",
+                         username="root", password=pw) as sesh:
+            sesh.probe()
+            sesh.exec("ls /tmp")
     """
     sesh = SSHSession(
         host=host,
@@ -152,7 +173,7 @@ def session(
         container_name=container,
     )
     logger.info("Opening SSH session to {}@{} via container '{}'", username, host, container)
-    sesh.connect()
+    sesh._connect()
     try:
         yield sesh
     finally:
@@ -160,17 +181,19 @@ def session(
         logger.info("Closed SSH session to {}@{}", username, host)
 
 
+# Backward compatibility
+session = connect
+
+
 @block(name="SSH Exec", category="ssh", action="exec")
 def exec(ctx, sesh: SSHSession, *, cmd: str) -> ExecResult:
-    """Execute a command over an existing SSH session."""
+    """.. deprecated:: 0.2.0 Use ``sesh.exec(cmd)`` instead."""
+    warnings.warn("ssh.exec() is deprecated. Use sesh.exec(cmd).", DeprecationWarning, stacklevel=2)
     return sesh.exec(cmd, block_name="SSH Exec")
 
 
 @block(name="SSH Probe", category="ssh", action="probe")
 def probe(ctx, sesh: SSHSession) -> ExecResult:
-    """Verify SSH session is authenticated and responsive."""
-    result = sesh.exec("whoami", block_name="SSH Probe")
-    if result.exit_code != 0:
-        raise RuntimeError(f"SSH probe failed: {result.stderr.strip()}")
-    logger.info("[SSH Probe] Authenticated as: {}", result.stdout.strip())
-    return result
+    """.. deprecated:: 0.2.0 Use ``sesh.probe()`` instead."""
+    warnings.warn("ssh.probe() is deprecated. Use sesh.probe().", DeprecationWarning, stacklevel=2)
+    return sesh.probe()
