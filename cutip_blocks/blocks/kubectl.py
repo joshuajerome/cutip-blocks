@@ -267,7 +267,6 @@ class KubectlSession:
         logger.info("[kubectl rollout status] {} rolled out successfully", resource)
         return result
 
-
     def patch_deployment(
         self,
         *,
@@ -309,9 +308,13 @@ class KubectlSession:
 
         # Fetch current deployment YAML
         logger.info("[kubectl patch deployment] Fetching {}/{} ...", ns, deployment)
-        result = self._run(f"get deployment -n {ns} {deployment} -o yaml", block_name="kubectl get deployment")
+        result = self._run(
+            f"get deployment -n {ns} {deployment} -o yaml", block_name="kubectl get deployment"
+        )
         if result.exit_code != 0 or not result.stdout.strip():
-            raise RuntimeError(f"Failed to get deployment {deployment} in {ns}: {result.stderr.strip()}")
+            raise RuntimeError(
+                f"Failed to get deployment {deployment} in {ns}: {result.stderr.strip()}"
+            )
 
         doc = _yaml.safe_load(result.stdout)
         spec = doc.get("spec", {}).get("template", {}).get("spec", {})
@@ -359,7 +362,9 @@ class KubectlSession:
             raise RuntimeError(f"kubectl apply failed: {apply_result.stderr.strip()}")
 
         # Wait for rollout
-        return self.rollout_status(resource=f"deployment/{deployment}", namespace=namespace, timeout=rollout_timeout)
+        return self.rollout_status(
+            resource=f"deployment/{deployment}", namespace=namespace, timeout=rollout_timeout
+        )
 
     def patch_file_from_pod(
         self,
@@ -407,13 +412,18 @@ class KubectlSession:
         self._sesh.exec(f"mkdir -p {dest_dir}", block_name="kubectl patch file")
 
         # Back up existing file
-        has_existing = self._sesh.exec(f"test -s {target_file}", block_name="kubectl patch file").exit_code == 0
+        has_existing = (
+            self._sesh.exec(f"test -s {target_file}", block_name="kubectl patch file").exit_code
+            == 0
+        )
         if has_existing:
             logger.info("[kubectl patch file] Backing up {} → {}", target_file, backup)
             self._sesh.exec(f"cp {target_file} {backup}", block_name="kubectl patch file")
 
         # Copy source: use backup if available (re-run safe), otherwise kubectl exec cat
-        has_backup = self._sesh.exec(f"test -s {backup}", block_name="kubectl patch file").exit_code == 0
+        has_backup = (
+            self._sesh.exec(f"test -s {backup}", block_name="kubectl patch file").exit_code == 0
+        )
 
         if has_backup:
             logger.info("[kubectl patch file] Re-run detected — restoring from {}", backup)
@@ -437,7 +447,9 @@ class KubectlSession:
             self._sesh.exec(f"mv {temp_file} {target_file}", block_name="kubectl patch file")
 
         # Sanity check
-        check = self._sesh.exec(f"test -s {target_file} && head -c 4 {target_file}", block_name="kubectl patch file")
+        check = self._sesh.exec(
+            f"test -s {target_file} && head -c 4 {target_file}", block_name="kubectl patch file"
+        )
         if check.exit_code != 0 or not check.stdout.strip():
             raise RuntimeError(f"Copied file is missing or empty: {target_file}")
 

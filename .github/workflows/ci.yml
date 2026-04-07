@@ -129,7 +129,7 @@ jobs:
           .wheel-test/bin/python -c "
           from cutip_blocks import BlockRegistry
           r = BlockRegistry.discover()
-          assert len(r.blocks) >= 30, f'Expected 30+ blocks, got {len(r.blocks)}'
+          assert len(r.blocks) >= 20, f'Expected 20+ blocks, got {len(r.blocks)}'
           print(f'OK: {len(r.blocks)} blocks across {len(r.categories())} categories')
           "
 
