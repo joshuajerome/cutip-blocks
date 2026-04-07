@@ -267,6 +267,209 @@ class KubectlSession:
         logger.info("[kubectl rollout status] {} rolled out successfully", resource)
         return result
 
+    def patch_deployment(
+        self,
+        *,
+        deployment: str,
+        volume_name: str,
+        host_path: str,
+        mount_path: str,
+        namespace: str | None = None,
+        rollout_timeout: int = 120,
+    ) -> ExecResult:
+        """Patch a deployment to add a hostPath volume + volumeMount, then apply and wait for rollout.
+
+        Fetches the current deployment YAML, injects the volume/mount if not
+        already present, strips metadata fields that block ``kubectl apply``,
+        writes the patched YAML to a temp file on the remote host, applies it,
+        and waits for the rollout to complete.
+
+        Args:
+            deployment: Deployment name.
+            volume_name: Name for the volume and volumeMount.
+            host_path: Host filesystem path to mount.
+            mount_path: Mount path inside the container.
+            namespace: Override the default namespace.
+            rollout_timeout: Max seconds to wait for rollout (default 120).
+
+        Example::
+
+            kube.patch_deployment(
+                deployment="web",
+                volume_name="config-override",
+                host_path="/root/patches/config.py",
+                mount_path="/opt/app/config.py",
+            )
+        """
+        import yaml as _yaml
+
+        ns = self._ns(namespace)
+        remote_patch_file = f"/tmp/{deployment}-patched.yaml"
+
+        # Fetch current deployment YAML
+        logger.info("[kubectl patch deployment] Fetching {}/{} ...", ns, deployment)
+        result = self._run(
+            f"get deployment -n {ns} {deployment} -o yaml", block_name="kubectl get deployment"
+        )
+        if result.exit_code != 0 or not result.stdout.strip():
+            raise RuntimeError(
+                f"Failed to get deployment {deployment} in {ns}: {result.stderr.strip()}"
+            )
+
+        doc = _yaml.safe_load(result.stdout)
+        spec = doc.get("spec", {}).get("template", {}).get("spec", {})
+
+        # Inject volume
+        volume_entry = {"name": volume_name, "hostPath": {"path": host_path, "type": ""}}
+        volumes = spec.get("volumes") or []
+        if not any(v.get("name") == volume_name for v in volumes):
+            volumes.append(volume_entry)
+            spec["volumes"] = volumes
+            logger.info("[kubectl patch deployment] Added volume '{}'", volume_name)
+        else:
+            logger.info("[kubectl patch deployment] Volume '{}' already present", volume_name)
+
+        # Inject volumeMount on first container
+        containers = spec.get("containers") or []
+        if not containers:
+            raise RuntimeError("No containers found in deployment spec")
+        mount_entry = {"name": volume_name, "mountPath": mount_path}
+        mounts = containers[0].get("volumeMounts") or []
+        if not any(vm.get("name") == volume_name for vm in mounts):
+            mounts.append(mount_entry)
+            containers[0]["volumeMounts"] = mounts
+            logger.info("[kubectl patch deployment] Added volumeMount '{}'", volume_name)
+        else:
+            logger.info("[kubectl patch deployment] VolumeMount '{}' already present", volume_name)
+
+        # Strip fields that block kubectl apply
+        metadata = doc.get("metadata", {})
+        for field in ("resourceVersion", "uid", "creationTimestamp", "generation"):
+            metadata.pop(field, None)
+        annotations = metadata.get("annotations", {})
+        annotations.pop("kubectl.kubernetes.io/last-applied-configuration", None)
+        doc.pop("status", None)
+
+        patched_yaml = _yaml.dump(doc, default_flow_style=False)
+
+        # Write, apply, clean up
+        write_cmd = f"cat << 'PATCH_EOF' > {remote_patch_file}\n{patched_yaml}\nPATCH_EOF"
+        self._sesh.exec(write_cmd, block_name="kubectl write patch")
+        apply_result = self._run(f"apply -f {remote_patch_file}", block_name="kubectl apply")
+        self._sesh.exec(f"rm -f {remote_patch_file}", block_name="kubectl cleanup")
+
+        if apply_result.exit_code != 0:
+            raise RuntimeError(f"kubectl apply failed: {apply_result.stderr.strip()}")
+
+        # Wait for rollout
+        return self.rollout_status(
+            resource=f"deployment/{deployment}", namespace=namespace, timeout=rollout_timeout
+        )
+
+    def patch_file_from_pod(
+        self,
+        *,
+        deployment: str,
+        source_file: str,
+        dest_dir: str,
+        replacements: dict[str, str],
+        chmod: str = "777",
+        namespace: str | None = None,
+    ) -> str:
+        """Copy a file from a pod to the VM host, apply text replacements, and set permissions.
+
+        On re-runs where a hostPath mount makes the pod's source file and the
+        host file the same inode, restores from the ``.bak`` backup on the host
+        instead of ``kubectl exec ... cat`` (which can produce empty output
+        during pod restarts).
+
+        Args:
+            deployment: Deployment name (used as ``deploy/{deployment}`` target).
+            source_file: Absolute path to the source file inside the pod.
+            dest_dir: Destination directory on the VM host.
+            replacements: Dict mapping original text to replacement text.
+            chmod: File permissions to set (default "777").
+            namespace: Override the default namespace.
+
+        Returns:
+            The absolute path to the patched file on the host.
+
+        Example::
+
+            kube.patch_file_from_pod(
+                deployment="web",
+                source_file="/opt/app/handler.py",
+                dest_dir="/root/patches",
+                replacements={"get_host(req)": "'localhost:4000'"},
+            )
+        """
+        ns = self._ns(namespace)
+        source_basename = source_file.rsplit("/", 1)[-1]
+        target_file = f"{dest_dir}/{source_basename}"
+        backup = f"{target_file}.bak"
+
+        # Create destination directory
+        self._sesh.exec(f"mkdir -p {dest_dir}", block_name="kubectl patch file")
+
+        # Back up existing file
+        has_existing = (
+            self._sesh.exec(f"test -s {target_file}", block_name="kubectl patch file").exit_code
+            == 0
+        )
+        if has_existing:
+            logger.info("[kubectl patch file] Backing up {} → {}", target_file, backup)
+            self._sesh.exec(f"cp {target_file} {backup}", block_name="kubectl patch file")
+
+        # Copy source: use backup if available (re-run safe), otherwise kubectl exec cat
+        has_backup = (
+            self._sesh.exec(f"test -s {backup}", block_name="kubectl patch file").exit_code == 0
+        )
+
+        if has_backup:
+            logger.info("[kubectl patch file] Re-run detected — restoring from {}", backup)
+            self._sesh.exec(f"cp {backup} {target_file}", block_name="kubectl patch file")
+        else:
+            # First run: verify source exists in pod, then copy
+            verify = self._run(
+                f"exec -n {ns} deploy/{deployment} -- test -f {source_file}",
+                block_name="kubectl patch file",
+            )
+            if verify.exit_code != 0:
+                raise RuntimeError(f"Source file not found in pod: {source_file}")
+
+            temp_file = f"{target_file}.tmp"
+            logger.info("[kubectl patch file] Copying {} from pod → {}", source_file, target_file)
+            copy_cmd = (
+                f"bash -c 'kubectl exec -n {ns} deploy/{deployment} "
+                f"-- cat {source_file} > {temp_file}'"
+            )
+            self._sesh.exec(copy_cmd, block_name="kubectl patch file")
+            self._sesh.exec(f"mv {temp_file} {target_file}", block_name="kubectl patch file")
+
+        # Sanity check
+        check = self._sesh.exec(
+            f"test -s {target_file} && head -c 4 {target_file}", block_name="kubectl patch file"
+        )
+        if check.exit_code != 0 or not check.stdout.strip():
+            raise RuntimeError(f"Copied file is missing or empty: {target_file}")
+
+        # Apply text replacements via sed
+        for original, patched in replacements.items():
+            logger.info("[kubectl patch file] sed: {}... → {}...", original[:50], patched[:50])
+            escaped_orig = original.replace("'", r"'\''")
+            escaped_patched = patched.replace("'", r"'\''")
+            self._sesh.exec(
+                f"sed -i 's|{escaped_orig}|{escaped_patched}|g' {target_file}",
+                block_name="kubectl patch file",
+            )
+
+        # Set permissions
+        logger.info("[kubectl patch file] chmod {} {}", chmod, target_file)
+        self._sesh.exec(f"chmod {chmod} {target_file}", block_name="kubectl patch file")
+
+        logger.success("[kubectl patch file] Patched and ready: {}", target_file)
+        return target_file
+
 
 def connect(sesh: SSHSession, *, namespace: str) -> KubectlSession:
     """Create a bound kubectl session over an existing SSH connection.
