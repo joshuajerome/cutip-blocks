@@ -25,14 +25,14 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install maturin + pytest
-        run: pip install maturin pytest
-
-      - name: Build and install
-        run: maturin develop --features pyo3/extension-module
+      - name: Create venv and install
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install maturin pytest
+          .venv/bin/maturin develop --features pyo3/extension-module
 
       - name: Run tests
-        run: pytest tests/ -v
+        run: .venv/bin/pytest tests/ -v
 
   build-and-release:
     name: Build & GitHub Release
