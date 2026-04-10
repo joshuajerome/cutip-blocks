@@ -46,67 +46,46 @@ jobs:
           gh label create "$LABEL" --color "$COLOR" --force --repo "${{ github.repository }}" 2>/dev/null || true
           gh pr edit "$PR" --repo "${{ github.repository }}" --add-label "$LABEL"
 
-  # ── Lint ────────────────────────────────────────────────────────────────────
-  lint:
-    name: Ruff Lint & Format
+  # ── Rust Check ─────────────────────────────────────────────────────────────
+  rust-check:
+    name: Rust Check
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
-        run: uv sync
+      - name: Cargo check
+        run: cargo check --features pyo3/extension-module
 
-      - name: Ruff check
-        run: uv run ruff check .
-
-      - name: Ruff format check
-        run: uv run ruff format --check .
-
-  # ── Type Check ──────────────────────────────────────────────────────────────
-  type-check:
-    name: Type Check (ty)
+  # ── Build + Test ───────────────────────────────────────────────────────────
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          version: "latest"
+          python-version: "3.13"
 
-      - name: Install dependencies
-        run: uv sync
+      - name: Install maturin + pytest
+        run: pip install maturin pytest
 
-      - name: Run ty
-        run: uv run ty check cutip_blocks/
-
-  # ── Unit Tests ──────────────────────────────────────────────────────────────
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
-
-      - name: Install dependencies
-        run: uv sync
+      - name: Build and install (dev)
+        run: maturin develop --features pyo3/extension-module
 
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: pytest tests/ -v
 
-  # ── Smoke Test ──────────────────────────────────────────────────────────────
+  # ── Smoke Test (wheel install) ─────────────────────────────────────────────
   smoke-test:
     name: Smoke Test
     runs-on: ubuntu-latest
@@ -114,23 +93,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          version: "latest"
+          python-version: "3.13"
+
+      - name: Install maturin
+        run: pip install maturin
 
       - name: Build wheel
-        run: uv build --wheel
+        run: maturin build --release --features pyo3/extension-module
 
-      - name: Smoke-test import
+      - name: Install wheel and smoke test
         run: |
-          uv venv .wheel-test
-          uv pip install --python .wheel-test/bin/python dist/cutip_blocks-*.whl
-          .wheel-test/bin/python -c "
-          from cutip_blocks import BlockRegistry
-          r = BlockRegistry.discover()
-          assert len(r.blocks) >= 20, f'Expected 20+ blocks, got {len(r.blocks)}'
-          print(f'OK: {len(r.blocks)} blocks across {len(r.categories())} categories')
+          pip install target/wheels/cutip_blocks-*.whl
+          python -c "
+          from cutip_blocks import ssh, kubectl, container, file, http
+          from cutip_blocks import validate, config, network, service
+          from cutip_blocks.blocks import ssh as ssh_compat
+          from cutip_blocks.utils import is_empty
+          assert is_empty(None) == True
+          assert is_empty('hello') == False
+          print('OK: all modules importable, is_empty works')
           "
 
   # ── Docs Build ──────────────────────────────────────────────────────────────

@@ -17,19 +17,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          version: "latest"
+          python-version: "3.13"
 
-      - name: Install dependencies
-        run: uv sync
+      - name: Install maturin + pytest
+        run: pip install maturin pytest
 
-      - name: Lint
-        run: uv run ruff check .
+      - name: Build and install
+        run: maturin develop --features pyo3/extension-module
 
-      - name: Unit tests
-        run: uv run pytest tests/ -v
+      - name: Run tests
+        run: pytest tests/ -v
 
   build-and-release:
     name: Build & GitHub Release
@@ -42,10 +45,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          version: "latest"
+          python-version: "3.13"
+
+      - name: Install maturin
+        run: pip install maturin
 
       - name: Extract version from PR head branch
         id: version
@@ -55,24 +64,23 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build wheel + sdist
-        run: uv build
+      - name: Build wheel (release)
+        run: maturin build --release --features pyo3/extension-module
 
       - name: List dist/
-        run: ls -lh dist/
+        run: ls -lh target/wheels/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: v${{ steps.version.outputs.tag }}
-          files: dist/*
+          files: target/wheels/*
           generate_release_notes: true
 
-      # Publish to PyPI — gated by PUBLISH_TO_PYPI variable
-      # Uses PYPI_TOKEN secret (same pattern as cutip repo)
+      # Publish to PyPI via maturin — gated by PUBLISH_TO_PYPI variable
       - name: Publish to PyPI
         if: vars.PUBLISH_TO_PYPI == 'true'
         env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: uv publish
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: maturin publish --features pyo3/extension-module
