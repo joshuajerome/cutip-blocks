@@ -46,6 +46,7 @@ dev = [
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "cutip_blocks._core"
+python-source = "."
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

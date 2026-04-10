@@ -76,14 +76,16 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install maturin + pytest
-        run: pip install maturin pytest
+      - name: Create venv and install tools
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install maturin pytest
 
       - name: Build and install (dev)
-        run: maturin develop --features pyo3/extension-module
+        run: .venv/bin/maturin develop --features pyo3/extension-module
 
       - name: Run tests
-        run: pytest tests/ -v
+        run: .venv/bin/pytest tests/ -v
 
   # ── Smoke Test (wheel install) ─────────────────────────────────────────────
   smoke-test:
@@ -101,16 +103,16 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install maturin
-        run: pip install maturin
-
       - name: Build wheel
-        run: maturin build --release --features pyo3/extension-module
+        run: |
+          pip install maturin
+          maturin build --release --features pyo3/extension-module
 
       - name: Install wheel and smoke test
         run: |
-          pip install target/wheels/cutip_blocks-*.whl
-          python -c "
+          python -m venv .smoke-venv
+          .smoke-venv/bin/pip install target/wheels/cutip_blocks-*.whl
+          .smoke-venv/bin/python -c "
           from cutip_blocks import ssh, kubectl, container, file, http
           from cutip_blocks import validate, config, network, service
           from cutip_blocks.blocks import ssh as ssh_compat
