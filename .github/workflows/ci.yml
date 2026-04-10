@@ -103,15 +103,15 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Create venv and build wheel
+      - name: Create venv and build
         run: |
-          python -m venv .smoke-venv
-          .smoke-venv/bin/pip install maturin
-          .smoke-venv/bin/maturin develop --release --features pyo3/extension-module
+          python -m venv .venv
+          .venv/bin/pip install maturin
+          .venv/bin/maturin develop --release --features pyo3/extension-module
 
       - name: Smoke test
         run: |
-          .smoke-venv/bin/python -c "
+          .venv/bin/python -c "
           from cutip_blocks import ssh, kubectl, container, file, http
           from cutip_blocks import validate, config, network, service
           from cutip_blocks.blocks import ssh as ssh_compat
