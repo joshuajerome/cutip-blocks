@@ -1,7 +1,17 @@
-"""CUTIP Blocks — reusable workflow blocks for CUTIP."""
+"""CUTIP Blocks — Rust-backed workflow blocks for CUTIP."""
 
-from cutip_blocks.decorator import BlockMeta, block
-from cutip_blocks.registry import BlockRegistry
-from cutip_blocks.utils import is_empty
+from cutip_blocks._core import (
+    ExecResult,
+    SSHSession,
+    ssh_connect,
+    KubectlSession,
+    kubectl_connect,
+)
 
-__all__ = ["BlockMeta", "BlockRegistry", "block", "is_empty"]
+__all__ = [
+    "ExecResult",
+    "SSHSession",
+    "ssh_connect",
+    "KubectlSession",
+    "kubectl_connect",
+]
