@@ -2,49 +2,62 @@
 
 ## What is CUTIP Blocks
 
-Reusable workflow blocks for CUTIP. Each block is a decorated Python function that maps to a single CLI operation (kubectl, ssh, cp, etc.). Blocks execute at runtime and provide metadata for cutip-desktop visualization.
+Rust-backed workflow blocks for CUTIP. Each block is a Python function that calls compiled Rust code via PyO3. All I/O (SSH, HTTP, Docker API, filesystem) happens in Rust. Python is the call surface only. Zero Python dependencies.
 
 ## Key Conventions
 
 - **Never auto-commit.** Only commit when explicitly asked.
-- **uv** is the package manager. Always `uv run`, `uv add`.
-- **Run tests**: `uv run pytest tests/ -v`
-- **Block naming**: `category.verb` — `k8s.get_secret`, `ssh.exec`, `file.copy`
-- **Each block function gets only the `@block` decorator** — no stacking
-- **SSH sessions use `sesh` parameter name** — never `conn`, `session`, `ssh`
-- **Logging**: every block logs its command via loguru with `[BlockName]` prefix
-- **Redaction**: passwords/tokens/keys are never logged — use `****`
+- **Build**: `maturin develop` (requires Rust toolchain + maturin)
+- **Run tests**: `pytest tests/ -v` (after maturin develop)
+- **Block naming**: `module.function` — `ssh.connect`, `kubectl.connect`, `file.copy`
+- **SSH sessions use `sesh`** — never `conn`, `session`
+- **Logging**: every block logs via `eprintln!` with `[Module]` prefix
+- **Redaction**: passwords are replaced with `****` in SSH log output
 
 ## Architecture
 
 ```
-cutip_blocks/
-├── __init__.py          # Public API: block decorator, BlockRegistry
-├── decorator.py         # @block decorator + BlockMeta dataclass
-├── registry.py          # BlockRegistry — discovers all blocks
-├── utils.py             # is_empty helper
-└── blocks/              # Block implementations by category
-    ├── container.py     # start, stop, remove, exec, exec_stream
-    ├── ssh.py           # connect (context manager), SSHSession.exec/probe
-    ├── kubectl.py       # connect → KubectlSession (bound to SSH + namespace)
-    ├── file.py          # copy, copy_tree, read_yaml, write_yaml, replace, is_empty
-    ├── download.py      # http_fetch
-    ├── config.py        # render_template, substitute_vars
-    ├── validate.py      # path_exists, env_var_set, ip_valid
-    ├── service.py       # poll_until_ready, wait_for_exit
-    ├── crictl.py        # image_ls, image_rm, image_import
-    └── ctr.py           # containerd ctr operations
+cutip-blocks/
+├── Cargo.toml                  # Rust deps: pyo3, russh, bollard, reqwest, serde
+├── pyproject.toml              # maturin build backend
+├── src/                        # Rust implementation
+│   ├── lib.rs                  # PyO3 module registration (48 exports)
+│   ├── ssh.rs                  # SSHSession via russh + tokio
+│   ├── kubectl.rs              # KubectlSession (10 methods, serde_json/yaml)
+│   ├── container.rs            # ContainerRuntime via bollard
+│   ├── file.rs                 # std::fs + serde_json + serde_yaml
+│   ├── http.rs                 # reqwest
+│   ├── network.rs              # bollard network API
+│   ├── service.rs              # reqwest poll + bollard wait
+│   ├── validate.rs             # std path/env/ip checks
+│   └── config.rs               # string template replacement
+├── cutip_blocks/               # Python wrappers (thin, call _core.so)
+│   ├── __init__.py
+│   ├── ssh.py                  # connect() context manager
+│   ├── kubectl.py              # connect() wrapper
+│   ├── container.py            # connect() wrapper
+│   ├── file.py                 # re-exports
+│   ├── http.py                 # re-exports
+│   ├── network.py              # re-exports
+│   ├── service.py              # re-exports
+│   ├── validate.py             # re-exports
+│   ├── config.py               # re-exports
+│   ├── utils.py                # is_empty
+│   └── blocks/                 # backward-compat layer for existing consumers
+│       ├── ssh.py              # re-exports from cutip_blocks.ssh
+│       ├── kubectl.py          # re-exports from cutip_blocks.kubectl
+│       ├── container.py        # re-exports + legacy start/stop/remove(ctx, container=)
+│       ├── file.py             # re-exports from cutip_blocks.file
+│       └── download.py         # http_fetch → http.get compat
+└── tests/                      # 27 tests
 ```
 
 ## SSH + kubectl Pattern
 
-All remote operations share a persistent SSH session. kubectl operations bind to the SSH session and a namespace:
-
 ```python
-from cutip_blocks.blocks import container, ssh, kubectl
+from cutip_blocks import ssh, kubectl
 
-with ssh.connect(ctx, container="ops-runner",
-                 host="10.0.0.1", username="root", password=pw) as sesh:
+with ssh.connect(host="10.0.0.1", username="root", password=pw) as sesh:
     sesh.probe()
 
     kube = kubectl.connect(sesh, namespace="prod")
@@ -57,13 +70,21 @@ with ssh.connect(ctx, container="ops-runner",
         host_path="/root/patches/config.py",
         mount_path="/opt/app/config.py",
     )
-    kube.patch_file_from_pod(
-        deployment="web",
-        source_file="/opt/app/handler.py",
-        dest_dir="/root/patches",
-        replacements={"old_value": "new_value"},
-    )
 ```
+
+## Modules
+
+| Module | Rust crate | Functions |
+|--------|-----------|-----------|
+| ssh | russh + tokio | `connect()`, `SSHSession.exec/probe/close` |
+| kubectl | serde_json/yaml | `connect()`, `KubectlSession` (10 methods) |
+| container | bollard | `connect()`, `ContainerRuntime.start/stop/remove/exec/pull/exists` |
+| file | std::fs + serde | `copy`, `copy_tree`, `read/write_json`, `read/write_yaml`, `replace`, `is_empty` |
+| http | reqwest | `get`, `post`, `put`, `delete` |
+| network | bollard | `create`, `remove`, `exists` |
+| service | reqwest + bollard | `poll_until_ready`, `wait_for_exit` |
+| validate | std | `path_exists`, `env_var_set`, `ip_valid` |
+| config | string ops | `render_template`, `substitute_vars` |
 
 ## KubectlSession Methods
 
@@ -71,28 +92,14 @@ with ssh.connect(ctx, container="ops-runner",
 |--------|-------------|
 | `get(resource, name)` | `kubectl get <resource> <name> -o <format>` |
 | `get_secret_value(secret, key)` | Decode a base64 field from a K8s secret |
-| `find_pod(name_prefix)` | Find a pod by deployment name prefix, prefer Running |
+| `find_pod(name_prefix)` | Find pod by prefix, prefer Running |
 | `exec(target, cmd)` | `kubectl exec <target> -- bash -c '<cmd>'` |
-| `cat_file(target, path)` | Read a file from inside a pod (no tar needed) |
-| `cp(pod, src, dest)` | `kubectl cp <pod>:<src> <dest>` |
-| `apply(file)` | `kubectl apply -f <file>` |
-| `rollout_status(resource, timeout)` | Wait for rollout to complete |
-| `patch_deployment(deployment, volume_name, host_path, mount_path)` | Add hostPath volume + mount, apply, wait for rollout |
-| `patch_file_from_pod(deployment, source_file, dest_dir, replacements)` | Copy file from pod, sed replacements, chmod (re-run safe) |
-
-## Block Categories
-
-| Category | Tool | Examples |
-|----------|------|---------|
-| container | podman/docker | start, stop, remove, exec |
-| ssh | paramiko | connect (context manager), SSHSession.exec/probe |
-| kubectl | kubectl over SSH | KubectlSession — get, exec, cp, apply, patch_deployment, patch_file_from_pod |
-| file | filesystem | copy, copy_tree, read_yaml, write_yaml, replace |
-| crictl | crictl/ctr | image_ls, image_rm, image_import |
-| download | http | http_fetch |
-| config | templates | render_template |
-| validate | checks | path_exists, env_var_set |
-| service | daemons | poll_until_ready |
+| `cat_file(target, path)` | Read file from pod (no tar) |
+| `cp(pod, src, dest)` | `kubectl cp` |
+| `apply(file)` | `kubectl apply -f` |
+| `rollout_status(resource, timeout)` | Wait for rollout |
+| `patch_deployment(...)` | Inject hostPath volume + mount, apply, rollout |
+| `patch_file_from_pod(...)` | Copy from pod, sed, chmod (re-run safe) |
 
 ## Branch Conventions
 

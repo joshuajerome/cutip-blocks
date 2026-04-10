@@ -1,78 +1,121 @@
 # cutip-blocks
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Rust](https://img.shields.io/badge/rust-PyO3-orange)](https://pyo3.rs/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![cutip](https://img.shields.io/badge/cutip-%E2%89%A50.2.0-purple)](https://github.com/joshuajerome/cutip)
 
-Reusable workflow blocks for [CUTIP](https://github.com/joshuajerome/cutip) — Container Unit Templates in Python.
+Rust-backed workflow blocks for [CUTIP](https://github.com/joshuajerome/cutip). Write Python, execute Rust.
 
-Each block is a decorated Python function that maps to a single CLI operation (`kubectl`, `ssh`, `cp`, etc.). Blocks execute at runtime and provide metadata for [cutip-desktop](https://github.com/joshuajerome/cutip-desktop) DAG visualization.
+Every function you call from `cutip_blocks` is a compiled Rust binary under the hood — SSH via [russh](https://crates.io/crates/russh), Docker/Podman via [bollard](https://crates.io/crates/bollard), HTTP via [reqwest](https://crates.io/crates/reqwest), YAML/JSON via [serde](https://crates.io/crates/serde). Zero Python dependencies. The Python GIL is released during all I/O.
 
-## Installation
+## Install
 
 ```bash
 pip install cutip-blocks
 ```
 
-## Block Categories
+## Modules
 
-| Category | Blocks | Maps to |
-|----------|--------|---------|
-| **container** | `start`, `stop`, `remove`, `exec`, `exec_stream` | `podman`/`docker` |
-| **ssh** | `session`, `exec`, `probe` | `ssh`/`paramiko` |
-| **file** | `copy`, `copy_tree`, `read_yaml`, `write_yaml`, `read_json`, `write_json`, `replace`, `is_empty` | filesystem |
-| **k8s** | `get_deployment`, `get_secret`, `get_pod`, `exec`, `cp`, `apply`, `patch_deployment`, `rollout_status` | `kubectl` |
-| **crictl** | `image_ls`, `image_rm`, `image_import` | `crictl`/`ctr` |
-| **download** | `http_fetch` | HTTP GET |
-| **config** | `render_template`, `substitute_vars` | template rendering |
-| **validate** | `path_exists`, `env_var_set`, `ip_valid` | precondition checks |
-| **service** | `poll_until_ready`, `wait_for_exit` | readiness polling |
+| Module | Rust crate | What it does |
+|--------|-----------|-------------|
+| **ssh** | russh | Persistent SSH sessions — `connect()`, `exec()`, `probe()` |
+| **kubectl** | serde | Kubernetes ops over SSH — `get`, `exec`, `find_pod`, `patch_deployment`, `patch_file_from_pod` |
+| **container** | bollard | Docker/Podman — `start`, `stop`, `remove`, `exec`, `pull` |
+| **file** | std::fs + serde | `copy`, `copy_tree`, `read/write_json`, `read/write_yaml`, `replace` |
+| **http** | reqwest | `get`, `post`, `put`, `delete` with JSON + TLS toggle |
+| **network** | bollard | `create`, `remove`, `exists` |
+| **service** | reqwest + bollard | `poll_until_ready`, `wait_for_exit` |
+| **validate** | std | `path_exists`, `env_var_set`, `ip_valid` |
+| **config** | string ops | `render_template`, `substitute_vars` |
 
 ## Usage
 
-```python
-from cutip.workflow import action, orchestrator, stage
-from cutip_blocks.blocks import container, ssh, k8s
-
-@action(name="Check Deployment")
-def check_deploy(ctx, sesh, ns, deploy):
-    k8s.get_deployment(ctx, sesh, namespace=ns, deployment=deploy)
-
-@orchestrator
-def main(ctx):
-    container.start(ctx, container="my-app")
-
-    with ssh.session(ctx, container="my-app",
-                     host="10.0.0.1", username="root",
-                     password=ctx.config["password"]) as sesh:
-
-        stage("Validation")
-        check_deploy(ctx, sesh, "default", "web")
-
-        stage("Operations")
-        k8s.apply(ctx, sesh, file="/tmp/patch.yaml")
-
-    container.stop(ctx, container="my-app")
-```
-
-## SSH Session
-
-All SSH-based blocks share a persistent connection via context manager. One SSH handshake, reused for all commands. Credentials are redacted in all log output.
-
-```
-INFO | [Get Deployment] ssh root@10.0.0.1 :: kubectl get deployment -n default web -o name
-INFO | [Get Secret] ssh root@10.0.0.1 :: kubectl get secret -n ns creds -o name
-```
-
-## Block Discovery
+### SSH + kubectl (remote VM operations)
 
 ```python
-from cutip_blocks import BlockRegistry
+from cutip_blocks import ssh, kubectl
 
-registry = BlockRegistry.discover()
-for meta, fn in registry.blocks:
-    print(f"{meta.category}.{meta.action} — {meta.name}")
+with ssh.connect(host="10.0.0.1", username="root", password=pw) as sesh:
+    sesh.probe()  # verify connectivity
+
+    kube = kubectl.connect(sesh, namespace="prod")
+    kube.get("deployment", name="web")
+    kube.find_pod(name_prefix="web")
+
+    password = kube.get_secret_value(secret="db-creds", key="password")
+    kube.exec(target="deploy/web", cmd="cat /app/config.py")
+
+    kube.patch_file_from_pod(
+        deployment="web",
+        source_file="/opt/app/handler.py",
+        dest_dir="/root/patches",
+        replacements={"old_value": "new_value"},
+    )
+
+    kube.patch_deployment(
+        deployment="web",
+        volume_name="config-override",
+        host_path="/root/patches/handler.py",
+        mount_path="/opt/app/handler.py",
+    )
 ```
+
+### Container management
+
+```python
+from cutip_blocks import container
+
+rt = container.connect()  # auto-detect Docker/Podman
+rt.pull("nginx", tag="latest")
+rt.start("my-container")
+result = rt.exec("my-container", "nginx -t")
+print(result.stdout)
+rt.stop("my-container")
+rt.remove("my-container")
+```
+
+### File operations
+
+```python
+from cutip_blocks import file
+
+data = file.read_json("config.json")
+file.copy_tree("src/", "build/deps/")
+file.replace("config.yaml", "old_value", "new_value")
+file.write_yaml("output.yaml", {"key": "value"})
+```
+
+### HTTP
+
+```python
+from cutip_blocks import http
+
+resp = http.post("https://api.example.com/token",
+                 json={"username": "admin", "password": "secret"},
+                 verify_tls=False)
+token = resp.json()["access_token"]
+```
+
+## Development
+
+Requires [Rust toolchain](https://rustup.rs/) + Python 3.11+.
+
+```bash
+git clone https://github.com/joshuajerome/cutip-blocks.git
+cd cutip-blocks
+python -m venv .venv && source .venv/bin/activate
+pip install maturin pytest
+maturin develop
+pytest tests/ -v
+```
+
+## Ecosystem
+
+| Project | Description |
+|---------|-------------|
+| [cutip](https://github.com/joshuajerome/cutip) | Workflow automation framework |
+| [cutip-blocks](https://github.com/joshuajerome/cutip-blocks) | Rust-backed blocks (this repo) |
+| [cutip-desktop](https://github.com/joshuajerome/cutip-desktop) | Visual companion — DAG, container management |
 
 ## License
 
