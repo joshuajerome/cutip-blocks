@@ -110,13 +110,12 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
-      # Publish to PyPI — gated by PUBLISH_TO_PYPI variable
+      # Publish to PyPI
       - name: Publish to PyPI
         if: vars.PUBLISH_TO_PYPI == 'true'
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
-          pip install maturin
-          for whl in dist/*.whl; do
-            echo "Publishing $whl"
-          done
-          # maturin publish uploads from dist/
-          # For now, manual upload: twine upload dist/*
+          pip install twine
+          twine upload dist/*.whl
