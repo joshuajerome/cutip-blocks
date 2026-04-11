@@ -146,7 +146,7 @@ wheels = [
 
 [[package]]
 name = "cutip-blocks"
-version = "0.3.0"
+version = "0.3.3"
 source = { editable = "." }
 
 [package.optional-dependencies]

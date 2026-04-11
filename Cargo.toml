@@ -1,6 +1,6 @@
 [package]
 name = "cutip_blocks_core"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 
 [lib]
@@ -19,5 +19,5 @@ serde_yaml = "0.9"
 base64 = "0.22"
 bollard = "0.18"
 futures-util = "0.3"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "native-tls"], default-features = false }
 walkdir = "2"

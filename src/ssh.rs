@@ -4,12 +4,14 @@
 //! All SSH I/O happens in Rust via russh over a tokio runtime.
 //! The Python GIL is released during network operations.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use russh::client;
 use russh::keys::PublicKey;
+use russh::kex;
 use tokio::runtime::Runtime;
 
 /// Result of a remote command execution.
@@ -206,7 +208,17 @@ pub fn ssh_connect(
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to create runtime: {e}")))?;
 
         let handle = runtime.block_on(async {
-            let config = Arc::new(client::Config::default());
+            let mut config = client::Config::default();
+            // Add ECDH NIST P-256/384/521 to the default kex list
+            // so we can connect to servers that only support these
+            let mut kex_list = config.preferred.kex.to_vec();
+            for algo in &[kex::ECDH_SHA2_NISTP256, kex::ECDH_SHA2_NISTP384, kex::ECDH_SHA2_NISTP521] {
+                if !kex_list.contains(algo) {
+                    kex_list.push(*algo);
+                }
+            }
+            config.preferred.kex = Cow::Owned(kex_list);
+            let config = Arc::new(config);
 
             let handler = ClientHandler;
             let mut session = client::connect(config, (host.as_str(), port), handler)
