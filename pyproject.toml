@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "cutip-blocks"
-version = "0.3.0"
+version = "0.3.1"
 description = "Reusable workflow blocks for CUTIP — Rust-backed via PyO3"
 readme = "README.md"
 license = { text = "MIT" }
