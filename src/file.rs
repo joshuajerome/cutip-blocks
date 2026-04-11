@@ -13,8 +13,9 @@ use pyo3::types::PyDict;
 pub fn copy(src: &str, dest: &str) -> PyResult<String> {
     eprintln!("[File Copy] {src} → {dest}");
     if let Some(parent) = Path::new(dest).parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| PyIOError::new_err(format!("Failed to create {}: {e}", parent.display())))?;
+        fs::create_dir_all(parent).map_err(|e| {
+            PyIOError::new_err(format!("Failed to create {}: {e}", parent.display()))
+        })?;
     }
     fs::copy(src, dest)
         .map_err(|e| PyIOError::new_err(format!("Failed to copy {src} → {dest}: {e}")))?;
@@ -25,7 +26,10 @@ pub fn copy(src: &str, dest: &str) -> PyResult<String> {
 #[pyfunction]
 #[pyo3(signature = (src, dest, clean = false))]
 pub fn copy_tree(src: &str, dest: &str, clean: bool) -> PyResult<String> {
-    eprintln!("[File Copy Tree] {src} → {dest}{}", if clean { " (clean)" } else { "" });
+    eprintln!(
+        "[File Copy Tree] {src} → {dest}{}",
+        if clean { " (clean)" } else { "" }
+    );
     let dest_path = Path::new(dest);
     if clean && dest_path.exists() {
         fs::remove_dir_all(dest_path)

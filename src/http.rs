@@ -29,7 +29,12 @@ impl HttpResponse {
     }
 
     fn __repr__(&self) -> String {
-        format!("HttpResponse(status={}, ok={}, len={})", self.status_code, self.ok, self.text.len())
+        format!(
+            "HttpResponse(status={}, ok={}, len={})",
+            self.status_code,
+            self.ok,
+            self.text.len()
+        )
     }
 }
 
@@ -59,7 +64,10 @@ pub fn get(
             for (k, v) in &headers {
                 req = req.header(k.as_str(), v.as_str());
             }
-            let resp = req.send().await.map_err(|e| PyRuntimeError::new_err(format!("HTTP GET failed: {e}")))?;
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("HTTP GET failed: {e}")))?;
             to_response(resp).await
         })
     })
@@ -95,11 +103,16 @@ pub fn post(
                 req = req.header(k.as_str(), v.as_str());
             }
             if let Some(j) = &json_body {
-                req = req.header("Content-Type", "application/json").body(j.clone());
+                req = req
+                    .header("Content-Type", "application/json")
+                    .body(j.clone());
             } else if let Some(b) = &str_body {
                 req = req.body(b.clone());
             }
-            let resp = req.send().await.map_err(|e| PyRuntimeError::new_err(format!("HTTP POST failed: {e}")))?;
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("HTTP POST failed: {e}")))?;
             to_response(resp).await
         })
     })
@@ -135,11 +148,16 @@ pub fn put(
                 req = req.header(k.as_str(), v.as_str());
             }
             if let Some(j) = &json_body {
-                req = req.header("Content-Type", "application/json").body(j.clone());
+                req = req
+                    .header("Content-Type", "application/json")
+                    .body(j.clone());
             } else if let Some(b) = &str_body {
                 req = req.body(b.clone());
             }
-            let resp = req.send().await.map_err(|e| PyRuntimeError::new_err(format!("HTTP PUT failed: {e}")))?;
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("HTTP PUT failed: {e}")))?;
             to_response(resp).await
         })
     })
@@ -167,7 +185,10 @@ pub fn delete(
             for (k, v) in &headers {
                 req = req.header(k.as_str(), v.as_str());
             }
-            let resp = req.send().await.map_err(|e| PyRuntimeError::new_err(format!("HTTP DELETE failed: {e}")))?;
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("HTTP DELETE failed: {e}")))?;
             to_response(resp).await
         })
     })
@@ -184,7 +205,10 @@ fn build_client(verify_tls: bool, timeout_s: u64) -> PyResult<reqwest::Client> {
 async fn to_response(resp: reqwest::Response) -> PyResult<HttpResponse> {
     let status = resp.status().as_u16();
     let ok = resp.status().is_success();
-    let text = resp.text().await.map_err(|e| PyRuntimeError::new_err(format!("Failed to read response: {e}")))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| PyRuntimeError::new_err(format!("Failed to read response: {e}")))?;
     Ok(HttpResponse {
         status_code: status,
         text,

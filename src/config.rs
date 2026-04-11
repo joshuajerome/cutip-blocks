@@ -11,10 +11,7 @@ pub fn render_template(template: &str, vars: HashMap<String, String>) -> String 
     let mut result = template.to_string();
     for (key, value) in &vars {
         // Match {{ key }} with optional whitespace inside braces
-        let patterns = [
-            format!("{{{{ {key} }}}}"),
-            format!("{{{{{key}}}}}"),
-        ];
+        let patterns = [format!("{{{{ {key} }}}}"), format!("{{{{{key}}}}}")];
         for pattern in &patterns {
             result = result.replace(pattern, value);
         }

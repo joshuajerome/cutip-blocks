@@ -82,18 +82,21 @@ impl SSHSession {
 
         let cmd_owned = cmd.to_string();
 
-        let display_cmd = inner.redact.iter().fold(cmd_owned.clone(), |s, secret| {
-            s.replace(secret, "****")
-        });
-        eprintln!("[SSH] ssh {}@{} :: {}", inner.username, inner.host, display_cmd);
+        let display_cmd = inner
+            .redact
+            .iter()
+            .fold(cmd_owned.clone(), |s, secret| s.replace(secret, "****"));
+        eprintln!(
+            "[SSH] ssh {}@{} :: {}",
+            inner.username, inner.host, display_cmd
+        );
 
         py.allow_threads(|| {
             inner.runtime.block_on(async {
-                let mut channel = inner
-                    .handle
-                    .channel_open_session()
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("Failed to open channel: {e}")))?;
+                let mut channel =
+                    inner.handle.channel_open_session().await.map_err(|e| {
+                        PyRuntimeError::new_err(format!("Failed to open channel: {e}"))
+                    })?;
 
                 channel
                     .exec(true, cmd_owned.as_bytes())
@@ -117,12 +120,16 @@ impl SSHSession {
                         }
                         Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
                             exit_code = exit_status as i32;
-                            if got_eof { break; }
+                            if got_eof {
+                                break;
+                            }
                         }
                         Some(russh::ChannelMsg::Eof) => {
                             got_eof = true;
                             // Don't break yet — ExitStatus may arrive after Eof
-                            if exit_code >= 0 { break; }
+                            if exit_code >= 0 {
+                                break;
+                            }
                         }
                         None => break,
                         _ => {}

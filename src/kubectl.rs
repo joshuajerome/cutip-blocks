@@ -95,9 +95,8 @@ impl KubectlSession {
             )));
         }
 
-        let data: serde_json::Value = serde_json::from_str(&result.stdout).map_err(|e| {
-            PyRuntimeError::new_err(format!("Failed to parse pod list JSON: {e}"))
-        })?;
+        let data: serde_json::Value = serde_json::from_str(&result.stdout)
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to parse pod list JSON: {e}")))?;
 
         let items = data["items"]
             .as_array()
@@ -137,10 +136,7 @@ impl KubectlSession {
                 selected.1,
             );
         } else {
-            eprintln!(
-                "[kubectl find pod] Found: {} ({})",
-                selected.0, selected.1
-            );
+            eprintln!("[kubectl find pod] Found: {} ({})", selected.0, selected.1);
         }
 
         Ok(selected.0.clone())
@@ -266,17 +262,12 @@ impl KubectlSession {
         }
 
         // Parse and patch YAML in Rust
-        let patched_yaml = patch_deployment_yaml(
-            &result.stdout,
-            volume_name,
-            host_path,
-            mount_path,
-        )?;
+        let patched_yaml =
+            patch_deployment_yaml(&result.stdout, volume_name, host_path, mount_path)?;
 
         // Write patched YAML to remote
-        let write_cmd = format!(
-            "cat << 'PATCH_EOF' > {remote_patch_file}\n{patched_yaml}\nPATCH_EOF"
-        );
+        let write_cmd =
+            format!("cat << 'PATCH_EOF' > {remote_patch_file}\n{patched_yaml}\nPATCH_EOF");
         self.exec_ssh(py, &write_cmd)?;
 
         // Apply
@@ -294,7 +285,12 @@ impl KubectlSession {
         }
 
         // Wait for rollout
-        self.rollout_status(py, &format!("deployment/{deployment}"), namespace, rollout_timeout)
+        self.rollout_status(
+            py,
+            &format!("deployment/{deployment}"),
+            namespace,
+            rollout_timeout,
+        )
     }
 
     /// Copy a file from a pod, apply sed replacements, chmod. Re-run safe.
@@ -318,7 +314,10 @@ impl KubectlSession {
         self.exec_ssh(py, &format!("mkdir -p {dest_dir}"))?;
 
         // Back up existing file
-        let has_existing = self.exec_ssh(py, &format!("test -s {target_file}"))?.exit_code == 0;
+        let has_existing = self
+            .exec_ssh(py, &format!("test -s {target_file}"))?
+            .exit_code
+            == 0;
         if has_existing {
             eprintln!("[kubectl patch file] Backing up {target_file} → {backup}");
             self.exec_ssh(py, &format!("cp {target_file} {backup}"))?;
@@ -343,9 +342,7 @@ impl KubectlSession {
             }
 
             let temp_file = format!("{target_file}.tmp");
-            eprintln!(
-                "[kubectl patch file] Copying {source_file} from pod → {target_file}"
-            );
+            eprintln!("[kubectl patch file] Copying {source_file} from pod → {target_file}");
             let copy_cmd = format!(
                 "bash -c 'kubectl exec -n {ns} deploy/{deployment} -- cat {source_file} > {temp_file}'"
             );
@@ -395,10 +392,8 @@ fn patch_deployment_yaml(
     host_path: &str,
     mount_path: &str,
 ) -> PyResult<String> {
-    let mut doc: serde_yaml::Value =
-        serde_yaml::from_str(raw_yaml).map_err(|e| {
-            PyRuntimeError::new_err(format!("Failed to parse deployment YAML: {e}"))
-        })?;
+    let mut doc: serde_yaml::Value = serde_yaml::from_str(raw_yaml)
+        .map_err(|e| PyRuntimeError::new_err(format!("Failed to parse deployment YAML: {e}")))?;
 
     let spec = doc
         .get_mut("spec")
@@ -407,9 +402,7 @@ fn patch_deployment_yaml(
         .ok_or_else(|| PyRuntimeError::new_err("Missing spec.template.spec in deployment"))?;
 
     // Inject volume
-    let volumes = spec
-        .get_mut("volumes")
-        .and_then(|v| v.as_sequence_mut());
+    let volumes = spec.get_mut("volumes").and_then(|v| v.as_sequence_mut());
 
     let volume_entry = serde_yaml::to_value(serde_json::json!({
         "name": volume_name,
@@ -418,7 +411,10 @@ fn patch_deployment_yaml(
     .unwrap();
 
     if let Some(volumes) = volumes {
-        if !volumes.iter().any(|v| v.get("name").and_then(|n| n.as_str()) == Some(volume_name)) {
+        if !volumes
+            .iter()
+            .any(|v| v.get("name").and_then(|n| n.as_str()) == Some(volume_name))
+        {
             volumes.push(volume_entry);
             eprintln!("[kubectl patch deployment] Added volume '{volume_name}'");
         } else {
@@ -450,7 +446,10 @@ fn patch_deployment_yaml(
         .and_then(|v| v.as_sequence_mut());
 
     if let Some(mounts) = mounts {
-        if !mounts.iter().any(|m| m.get("name").and_then(|n| n.as_str()) == Some(volume_name)) {
+        if !mounts
+            .iter()
+            .any(|m| m.get("name").and_then(|n| n.as_str()) == Some(volume_name))
+        {
             mounts.push(mount_entry);
             eprintln!("[kubectl patch deployment] Added volumeMount '{volume_name}'");
         } else {

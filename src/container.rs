@@ -1,14 +1,11 @@
 //! Container blocks — lifecycle and exec operations via bollard (Docker/Podman API).
 
-use std::collections::HashMap;
-use std::path::Path;
 
 use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, LogsOptions, RemoveContainerOptions,
-    StartContainerOptions, StopContainerOptions, WaitContainerOptions,
+    RemoveContainerOptions,
+    StartContainerOptions, StopContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, StartExecResults};
-use bollard::image::BuildImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 use pyo3::exceptions::PyRuntimeError;
@@ -59,10 +56,7 @@ impl ContainerRuntime {
         py.allow_threads(|| {
             self.runtime.block_on(async {
                 client
-                    .stop_container(
-                        &name,
-                        Some(StopContainerOptions { t: timeout }),
-                    )
+                    .stop_container(&name, Some(StopContainerOptions { t: timeout }))
                     .await
                     .map_err(|e| PyRuntimeError::new_err(format!("Failed to stop {name}: {e}")))?;
                 Ok(())
@@ -120,10 +114,10 @@ impl ContainerRuntime {
                 let mut stdout = Vec::new();
                 let mut stderr = Vec::new();
 
-                if let StartExecResults::Attached { mut output, .. } =
-                    client.start_exec(&exec.id, None).await.map_err(|e| {
-                        PyRuntimeError::new_err(format!("Failed to start exec: {e}"))
-                    })?
+                if let StartExecResults::Attached { mut output, .. } = client
+                    .start_exec(&exec.id, None)
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!("Failed to start exec: {e}")))?
                 {
                     while let Some(msg) = output.next().await {
                         match msg {
@@ -170,9 +164,7 @@ impl ContainerRuntime {
                 };
                 let mut stream = client.create_image(Some(opts), None, None);
                 while let Some(result) = stream.next().await {
-                    result.map_err(|e| {
-                        PyRuntimeError::new_err(format!("Pull failed: {e}"))
-                    })?;
+                    result.map_err(|e| PyRuntimeError::new_err(format!("Pull failed: {e}")))?;
                 }
                 eprintln!("[Container] Pulled: {image}:{tag}");
                 Ok(())
@@ -234,8 +226,9 @@ pub fn container_connect(py: Python<'_>, socket: Option<&str>) -> PyResult<Conta
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to create runtime: {e}")))?;
 
         let client = if let Some(socket_path) = socket {
-            Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION)
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to connect to {socket_path}: {e}")))?
+            Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION).map_err(
+                |e| PyRuntimeError::new_err(format!("Failed to connect to {socket_path}: {e}")),
+            )?
         } else {
             Docker::connect_with_local_defaults()
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to connect to Docker: {e}")))?

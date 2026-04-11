@@ -20,8 +20,8 @@ pub fn poll_until_ready(
     let url = url.to_string();
 
     py.allow_threads(|| {
-        let rt = Runtime::new()
-            .map_err(|e| PyRuntimeError::new_err(format!("Runtime error: {e}")))?;
+        let rt =
+            Runtime::new().map_err(|e| PyRuntimeError::new_err(format!("Runtime error: {e}")))?;
 
         rt.block_on(async {
             let client = reqwest::Client::builder()
@@ -77,34 +77,31 @@ pub fn wait_for_exit(
             use bollard::container::WaitContainerOptions;
             use futures_util::StreamExt;
 
-            let timeout = tokio::time::timeout(
-                Duration::from_secs(timeout_s),
-                async {
-                    let mut stream = client.wait_container(
-                        &name,
-                        Some(WaitContainerOptions {
-                            condition: "not-running",
-                        }),
-                    );
-                    while let Some(result) = stream.next().await {
-                        match result {
-                            Ok(exit) => {
-                                let code = exit.status_code;
-                                eprintln!("[Service] Container {name} exited with code {code}");
-                                return Ok(code);
-                            }
-                            Err(e) => {
-                                return Err(PyRuntimeError::new_err(format!(
-                                    "Wait error for {name}: {e}"
-                                )));
-                            }
+            let timeout = tokio::time::timeout(Duration::from_secs(timeout_s), async {
+                let mut stream = client.wait_container(
+                    &name,
+                    Some(WaitContainerOptions {
+                        condition: "not-running",
+                    }),
+                );
+                while let Some(result) = stream.next().await {
+                    match result {
+                        Ok(exit) => {
+                            let code = exit.status_code;
+                            eprintln!("[Service] Container {name} exited with code {code}");
+                            return Ok(code);
+                        }
+                        Err(e) => {
+                            return Err(PyRuntimeError::new_err(format!(
+                                "Wait error for {name}: {e}"
+                            )));
                         }
                     }
-                    Err(PyRuntimeError::new_err(format!(
-                        "Wait stream ended without exit for {name}"
-                    )))
-                },
-            )
+                }
+                Err(PyRuntimeError::new_err(format!(
+                    "Wait stream ended without exit for {name}"
+                )))
+            })
             .await;
 
             match timeout {

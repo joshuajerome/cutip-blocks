@@ -3,10 +3,8 @@
 use std::collections::HashMap;
 
 use bollard::network::{CreateNetworkOptions, InspectNetworkOptions};
-use bollard::Docker;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use tokio::runtime::Runtime;
 
 use crate::container::ContainerRuntime;
 
@@ -59,10 +57,9 @@ pub fn create(
                 ..Default::default()
             };
 
-            client
-                .create_network(opts)
-                .await
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to create network {name}: {e}")))?;
+            client.create_network(opts).await.map_err(|e| {
+                PyRuntimeError::new_err(format!("Failed to create network {name}: {e}"))
+            })?;
 
             eprintln!("[Network] Created: {name}");
             Ok(())
@@ -81,10 +78,9 @@ pub fn remove(py: Python<'_>, runtime: &ContainerRuntime, name: &str) -> PyResul
 
     py.allow_threads(|| {
         rt.block_on(async {
-            client
-                .remove_network(&name)
-                .await
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to remove network {name}: {e}")))?;
+            client.remove_network(&name).await.map_err(|e| {
+                PyRuntimeError::new_err(format!("Failed to remove network {name}: {e}"))
+            })?;
             eprintln!("[Network] Removed: {name}");
             Ok(())
         })
@@ -101,10 +97,17 @@ pub fn exists(py: Python<'_>, runtime: &ContainerRuntime, name: &str) -> PyResul
 
     py.allow_threads(|| {
         rt.block_on(async {
-            match client.inspect_network(&name, None::<InspectNetworkOptions<String>>).await {
+            match client
+                .inspect_network(&name, None::<InspectNetworkOptions<String>>)
+                .await
+            {
                 Ok(_) => Ok(true),
-                Err(bollard::errors::Error::DockerResponseServerError { status_code: 404, .. }) => Ok(false),
-                Err(e) => Err(PyRuntimeError::new_err(format!("Failed to inspect network {name}: {e}"))),
+                Err(bollard::errors::Error::DockerResponseServerError {
+                    status_code: 404, ..
+                }) => Ok(false),
+                Err(e) => Err(PyRuntimeError::new_err(format!(
+                    "Failed to inspect network {name}: {e}"
+                ))),
             }
         })
     })
