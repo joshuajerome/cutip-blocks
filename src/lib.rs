@@ -2,11 +2,13 @@ use pyo3::prelude::*;
 
 mod config;
 mod container;
+pub mod errors;
 pub mod file;
 mod http;
 mod kubectl;
 mod network;
 mod service;
+mod shell;
 mod ssh;
 mod validate;
 
@@ -14,6 +16,10 @@ mod validate;
 /// Exposed to Python as `cutip_blocks._core`.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Errors
+    errors::register(m)?;
+    // Shell
+    m.add_function(wrap_pyfunction!(shell::run, m)?)?;
     // SSH
     m.add_class::<ssh::ExecResult>()?;
     m.add_class::<ssh::SSHSession>()?;
