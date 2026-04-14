@@ -5,7 +5,7 @@
 //! The Python GIL is released during command execution.
 
 use std::collections::HashMap;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use pyo3::prelude::*;
 
@@ -23,14 +23,16 @@ use crate::ssh::ExecResult;
 /// * `cwd` — Optional working directory.
 /// * `env` — Optional environment variables (merged with current env).
 /// * `check` — If true (default), raise `CommandFailed` on non-zero exit. If false, return the result regardless.
+/// * `stream` — If true, inherit stdout/stderr (prints to console in real-time). ExecResult stdout/stderr will be empty.
 #[pyfunction]
-#[pyo3(signature = (cmd, *, cwd=None, env=None, check=true))]
+#[pyo3(signature = (cmd, *, cwd=None, env=None, check=true, stream=false))]
 pub fn run(
     py: Python<'_>,
     cmd: &str,
     cwd: Option<&str>,
     env: Option<HashMap<String, String>>,
     check: bool,
+    stream: bool,
 ) -> PyResult<ExecResult> {
     let cmd_display = if cmd.len() > 120 {
         format!("{}...", &cmd[..120])
@@ -64,30 +66,54 @@ pub fn run(
             }
         }
 
-        let output = command
-            .output()
-            .map_err(|e| errors::ConnectionError::new_err(format!("Failed to execute command: {e}")))?;
+        if stream {
+            // Inherit stdio — output goes directly to console in real-time
+            command.stdout(Stdio::inherit());
+            command.stderr(Stdio::inherit());
 
-        let exit_code = output.status.code().unwrap_or(-1);
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let status = command
+                .status()
+                .map_err(|e| errors::ConnectionError::new_err(format!("Failed to execute command: {e}")))?;
 
-        if check && exit_code != 0 {
-            let err_msg = if stderr.trim().is_empty() {
-                format!("Command failed with exit code {exit_code}: {cmd_owned}")
-            } else {
-                format!(
-                    "Command failed with exit code {exit_code}: {}",
-                    stderr.trim()
-                )
-            };
-            return Err(errors::CommandFailed::new_err(err_msg));
+            let exit_code = status.code().unwrap_or(-1);
+
+            if check && exit_code != 0 {
+                return Err(errors::CommandFailed::new_err(
+                    format!("Command failed with exit code {exit_code}: {cmd_owned}")
+                ));
+            }
+
+            Ok(ExecResult {
+                exit_code,
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        } else {
+            let output = command
+                .output()
+                .map_err(|e| errors::ConnectionError::new_err(format!("Failed to execute command: {e}")))?;
+
+            let exit_code = output.status.code().unwrap_or(-1);
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+            if check && exit_code != 0 {
+                let err_msg = if stderr.trim().is_empty() {
+                    format!("Command failed with exit code {exit_code}: {cmd_owned}")
+                } else {
+                    format!(
+                        "Command failed with exit code {exit_code}: {}",
+                        stderr.trim()
+                    )
+                };
+                return Err(errors::CommandFailed::new_err(err_msg));
+            }
+
+            Ok(ExecResult {
+                exit_code,
+                stdout,
+                stderr,
+            })
         }
-
-        Ok(ExecResult {
-            exit_code,
-            stdout,
-            stderr,
-        })
     })
 }
