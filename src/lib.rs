@@ -7,10 +7,13 @@ pub mod file;
 mod http;
 mod kubectl;
 mod network;
+mod pkg;
 pub mod runtime;
 mod service;
 mod shell;
 mod ssh;
+mod svc;
+mod template;
 mod validate;
 
 /// The native core module for cutip-blocks.
@@ -62,5 +65,21 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Config
     m.add_function(wrap_pyfunction!(config::render_template, m)?)?;
     m.add_function(wrap_pyfunction!(config::substitute_vars, m)?)?;
+    // Package
+    m.add_function(wrap_pyfunction!(pkg::install, m)?)?;
+    m.add_function(wrap_pyfunction!(pkg::remove, m)?)?;
+    m.add_function(wrap_pyfunction!(pkg::update, m)?)?;
+    // Service
+    m.add_function(wrap_pyfunction!(svc::start, m)?)?;
+    m.add_function(wrap_pyfunction!(svc::stop, m)?)?;
+    m.add_function(wrap_pyfunction!(svc::restart, m)?)?;
+    m.add_function(wrap_pyfunction!(svc::enable, m)?)?;
+    m.add_function(wrap_pyfunction!(svc::disable, m)?)?;
+    m.add_function(wrap_pyfunction!(svc::is_active, m)?)?;
+    m.add_function(wrap_pyfunction!(svc::status, m)?)?;
+    // Template
+    m.add_function(wrap_pyfunction!(template::render, m)?)?;
+    m.add_function(wrap_pyfunction!(template::render_string, m)?)?;
+    m.add_function(wrap_pyfunction!(template::check, m)?)?;
     Ok(())
 }
