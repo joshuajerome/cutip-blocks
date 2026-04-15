@@ -8,6 +8,7 @@ from cutip_blocks._core import (
     read_json,
     write_json,
     replace,
+    mkdir,
     is_empty,
 )
 
@@ -15,5 +16,5 @@ __all__ = [
     "copy", "copy_tree",
     "read_yaml", "write_yaml",
     "read_json", "write_json",
-    "replace", "is_empty",
+    "replace", "mkdir", "is_empty",
 ]

@@ -43,6 +43,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(file::read_json, m)?)?;
     m.add_function(wrap_pyfunction!(file::write_json, m)?)?;
     m.add_function(wrap_pyfunction!(file::replace, m)?)?;
+    m.add_function(wrap_pyfunction!(file::mkdir, m)?)?;
     m.add_function(wrap_pyfunction!(file::is_empty, m)?)?;
     // HTTP
     m.add_class::<http::HttpResponse>()?;
