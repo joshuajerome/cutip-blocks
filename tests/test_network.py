@@ -1,6 +1,6 @@
 """Tests for network blocks."""
 
-from cutip_blocks import network
+from rsty import network
 
 
 def test_imports():

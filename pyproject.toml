@@ -3,32 +3,34 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "cutip-blocks"
-version = "0.6.0"
-description = "Reusable workflow blocks for CUTIP — Rust-backed via PyO3"
+name = "rsty"
+version = "0.1.0"
+description = "Python-typed Rust modules for workflow automation — SSH, containers, files, HTTP, packages, services, templates"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "Joshua Jerome" },
 ]
-keywords = ["cutip", "containers", "workflow", "blocks", "kubernetes", "ssh", "rust"]
+keywords = ["cutip", "rust", "pyo3", "workflow", "automation", "ssh", "containers", "kubernetes"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Rust",
+    "Topic :: System :: Systems Administration",
 ]
 requires-python = ">=3.11"
 # No Python dependencies — all I/O is Rust (russh, bollard, reqwest, serde)
 
 [project.urls]
-Homepage = "https://github.com/joshuajerome/cutip-blocks"
-Repository = "https://github.com/joshuajerome/cutip-blocks"
-"Bug Tracker" = "https://github.com/joshuajerome/cutip-blocks/issues"
+Homepage = "https://github.com/joshuajerome/rsty"
+Repository = "https://github.com/joshuajerome/rsty"
+"Bug Tracker" = "https://github.com/joshuajerome/rsty/issues"
 
 [project.optional-dependencies]
 docs = [
@@ -45,7 +47,7 @@ dev = [
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
-module-name = "cutip_blocks._core"
+module-name = "rsty._core"
 python-source = "."
 
 [tool.pytest.ini_options]

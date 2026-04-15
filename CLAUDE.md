@@ -17,7 +17,7 @@ Rust-backed workflow blocks for CUTIP. Each block is a Python function that call
 ## Architecture
 
 ```
-cutip-blocks/
+rsty/
 ├── Cargo.toml                  # Rust deps: pyo3, russh, bollard, reqwest, serde
 ├── pyproject.toml              # maturin build backend
 ├── src/                        # Rust implementation
@@ -31,7 +31,7 @@ cutip-blocks/
 │   ├── service.rs              # reqwest poll + bollard wait
 │   ├── validate.rs             # std path/env/ip checks
 │   └── config.rs               # string template replacement
-├── cutip_blocks/               # Python wrappers (thin, call _core.so)
+├── rsty/               # Python wrappers (thin, call _core.so)
 │   ├── __init__.py
 │   ├── ssh.py                  # connect() context manager
 │   ├── kubectl.py              # connect() wrapper
@@ -44,10 +44,10 @@ cutip-blocks/
 │   ├── config.py               # re-exports
 │   ├── utils.py                # is_empty
 │   └── blocks/                 # backward-compat layer for existing consumers
-│       ├── ssh.py              # re-exports from cutip_blocks.ssh
-│       ├── kubectl.py          # re-exports from cutip_blocks.kubectl
+│       ├── ssh.py              # re-exports from rsty.ssh
+│       ├── kubectl.py          # re-exports from rsty.kubectl
 │       ├── container.py        # re-exports + legacy start/stop/remove(ctx, container=)
-│       ├── file.py             # re-exports from cutip_blocks.file
+│       ├── file.py             # re-exports from rsty.file
 │       └── download.py         # http_fetch → http.get compat
 └── tests/                      # 27 tests
 ```
@@ -55,7 +55,7 @@ cutip-blocks/
 ## SSH + kubectl Pattern
 
 ```python
-from cutip_blocks import ssh, kubectl
+from rsty import ssh, kubectl
 
 with ssh.connect(host="10.0.0.1", username="root", password=pw) as sesh:
     sesh.probe()

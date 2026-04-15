@@ -1,7 +1,7 @@
 """Tests for Rust-backed container runtime."""
 
 import pytest
-from cutip_blocks import container
+from rsty import container
 
 
 def test_imports():

@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 
-from cutip_blocks import file
+from rsty import file
 
 
 def test_json_roundtrip():

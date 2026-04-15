@@ -1,6 +1,6 @@
 """Tests for Rust-backed SSH module."""
 
-from cutip_blocks._core import ExecResult, SSHSession, ssh_connect
+from rsty._core import ExecResult, SSHSession, ssh_connect
 
 
 def test_imports():
@@ -18,5 +18,5 @@ def test_exec_result_repr():
 
 def test_ssh_wrapper_importable():
     """Python wrapper module should import cleanly."""
-    from cutip_blocks import ssh
+    from rsty import ssh
     assert hasattr(ssh, "connect")

@@ -1,7 +1,7 @@
 """Tests for validate blocks."""
 
 import os
-from cutip_blocks import validate
+from rsty import validate
 
 
 def test_path_exists():

@@ -1,6 +1,6 @@
 """Tests for Rust-backed HTTP operations."""
 
-from cutip_blocks import http
+from rsty import http
 
 
 def test_get():

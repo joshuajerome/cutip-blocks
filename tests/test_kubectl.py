@@ -1,6 +1,6 @@
 """Tests for Rust-backed kubectl module."""
 
-from cutip_blocks._core import KubectlSession, kubectl_connect, SSHSession
+from rsty._core import KubectlSession, kubectl_connect, SSHSession
 
 
 def test_imports():
@@ -11,7 +11,7 @@ def test_imports():
 
 def test_kubectl_wrapper_importable():
     """Python wrapper module should import cleanly."""
-    from cutip_blocks import kubectl
+    from rsty import kubectl
     assert hasattr(kubectl, "connect")
 
 

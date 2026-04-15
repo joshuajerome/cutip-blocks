@@ -1,6 +1,6 @@
 """Tests for service blocks."""
 
-from cutip_blocks import service
+from rsty import service
 
 
 def test_imports():

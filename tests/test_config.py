@@ -1,6 +1,6 @@
 """Tests for config blocks."""
 
-from cutip_blocks import config
+from rsty import config
 
 
 def test_render_template():
