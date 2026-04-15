@@ -1,16 +1,23 @@
 //! Container blocks — lifecycle and exec operations via bollard (Docker/Podman API).
 
+use std::collections::HashMap;
+use std::path::Path;
 
 use bollard::container::{
-    RemoveContainerOptions,
-    StartContainerOptions, StopContainerOptions,
+    Config as ContainerCreateConfig, CreateContainerOptions,
+    RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, StartExecResults};
+use bollard::image::BuildImageOptions;
+use bollard::models::{HostConfig, Mount, MountTypeEnum, PortBinding};
 use bollard::Docker;
 use futures_util::StreamExt;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyList};
 use tokio::runtime::Runtime;
+
+use crate::errors;
 
 /// A connection to the Docker/Podman daemon.
 #[pyclass]
@@ -30,6 +37,219 @@ impl ContainerRuntime {
 
 #[pymethods]
 impl ContainerRuntime {
+    /// Build an image from a Dockerfile.
+    ///
+    /// Streams build output to stderr. Returns the image ID.
+    #[pyo3(signature = (*, context, dockerfile, tag, build_args = None, network_mode = None))]
+    fn build(
+        &self,
+        py: Python<'_>,
+        context: &str,
+        dockerfile: &str,
+        tag: &str,
+        build_args: Option<HashMap<String, String>>,
+        network_mode: Option<&str>,
+    ) -> PyResult<String> {
+        eprintln!("[Container] Building: {tag} from {context}/{dockerfile}");
+
+        let context_path = Path::new(context);
+        if !context_path.is_dir() {
+            return Err(errors::ValidationError::new_err(format!(
+                "Build context not found: {context}"
+            )));
+        }
+
+        let df_path = context_path.join(dockerfile);
+        if !df_path.is_file() {
+            return Err(errors::ValidationError::new_err(format!(
+                "Dockerfile not found: {}", df_path.display()
+            )));
+        }
+
+        // Create tar archive of context directory
+        let tar_bytes = create_tar_archive(context_path)
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to create build context archive: {e}")))?;
+
+        let tag_owned = tag.to_string();
+        let dockerfile_owned = dockerfile.to_string();
+        let build_args_owned = build_args.unwrap_or_default();
+        let network_owned = network_mode.map(|s| s.to_string());
+        let client = self.client.clone();
+
+        py.allow_threads(|| {
+            self.runtime.block_on(async {
+                let mut opts = BuildImageOptions {
+                    t: tag_owned.as_str(),
+                    dockerfile: dockerfile_owned.as_str(),
+                    rm: true,
+                    ..Default::default()
+                };
+
+                if let Some(ref net) = network_owned {
+                    opts.networkmode = net.as_str();
+                }
+
+                // Convert build args to the format bollard expects
+                let args_str: HashMap<&str, &str> = build_args_owned
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .collect();
+                opts.buildargs = args_str;
+
+                let mut stream = client.build_image(opts, None, Some(tar_bytes.into()));
+                let mut image_id = String::new();
+
+                while let Some(result) = stream.next().await {
+                    match result {
+                        Ok(output) => {
+                            if let Some(ref stream_str) = output.stream {
+                                let line = stream_str.trim_end();
+                                if !line.is_empty() {
+                                    eprintln!("{line}");
+                                }
+                            }
+                            if let Some(ref id) = output.aux {
+                                if let Some(ref id_str) = id.id {
+                                    image_id = id_str.clone();
+                                }
+                            }
+                            if let Some(ref err) = output.error {
+                                return Err(errors::CommandFailed::new_err(format!(
+                                    "Build failed: {err}"
+                                )));
+                            }
+                        }
+                        Err(e) => {
+                            return Err(errors::CommandFailed::new_err(format!(
+                                "Build failed: {e}"
+                            )));
+                        }
+                    }
+                }
+
+                eprintln!("[Container] Built: {tag_owned}");
+                Ok(image_id)
+            })
+        })
+    }
+
+    /// Create a container from an image.
+    ///
+    /// Returns the container ID. The container is created but not started.
+    #[pyo3(signature = (
+        *,
+        name,
+        image,
+        network_mode = None,
+        privileged = false,
+        hostname = None,
+        workdir = None,
+        command = None,
+        environment = None,
+        mounts = None,
+        labels = None,
+        ports = None,
+        restart_policy = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn create(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        image: &str,
+        network_mode: Option<&str>,
+        privileged: bool,
+        hostname: Option<&str>,
+        workdir: Option<&str>,
+        command: Option<&str>,
+        environment: Option<HashMap<String, String>>,
+        mounts: Option<&Bound<'_, PyList>>,
+        labels: Option<HashMap<String, String>>,
+        ports: Option<HashMap<String, String>>,
+        restart_policy: Option<&str>,
+    ) -> PyResult<String> {
+        eprintln!("[Container] Creating: {name} from {image}");
+
+        let name_owned = name.to_string();
+        let image_owned = image.to_string();
+        let network_mode_owned = network_mode.map(|s| s.to_string());
+        let hostname_owned = hostname.map(|s| s.to_string());
+        let workdir_owned = workdir.map(|s| s.to_string());
+        let env_owned = environment.unwrap_or_default();
+        let labels_owned = labels.unwrap_or_default();
+        let ports_owned = ports.unwrap_or_default();
+        let restart_owned = restart_policy.map(|s| s.to_string());
+
+        // Parse command string into vec
+        let cmd: Option<Vec<String>> = command.map(|c| {
+            vec!["/bin/sh".to_string(), "-c".to_string(), c.to_string()]
+        });
+
+        // Convert environment to Docker format: ["KEY=value", ...]
+        let env_vec: Vec<String> = env_owned
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
+
+        // Parse mounts from Python list of dicts
+        let docker_mounts = parse_mounts(mounts)?;
+
+        // Parse port bindings
+        let (exposed_ports, port_bindings) = parse_ports(&ports_owned);
+
+        // Build restart policy
+        let restart = restart_owned.map(|policy| {
+            bollard::models::RestartPolicy {
+                name: Some(match policy.as_str() {
+                    "always" => bollard::models::RestartPolicyNameEnum::ALWAYS,
+                    "unless-stopped" => bollard::models::RestartPolicyNameEnum::UNLESS_STOPPED,
+                    "on-failure" => bollard::models::RestartPolicyNameEnum::ON_FAILURE,
+                    _ => bollard::models::RestartPolicyNameEnum::NO,
+                }),
+                maximum_retry_count: None,
+            }
+        });
+
+        let client = self.client.clone();
+
+        py.allow_threads(|| {
+            self.runtime.block_on(async {
+                let host_config = HostConfig {
+                    network_mode: network_mode_owned.clone(),
+                    privileged: Some(privileged),
+                    mounts: if docker_mounts.is_empty() { None } else { Some(docker_mounts) },
+                    port_bindings: if port_bindings.is_empty() { None } else { Some(port_bindings) },
+                    restart_policy: restart,
+                    ..Default::default()
+                };
+
+                let config = ContainerCreateConfig {
+                    image: Some(image_owned.clone()),
+                    hostname: hostname_owned,
+                    working_dir: workdir_owned,
+                    cmd: cmd,
+                    env: if env_vec.is_empty() { None } else { Some(env_vec) },
+                    labels: if labels_owned.is_empty() { None } else { Some(labels_owned) },
+                    exposed_ports: if exposed_ports.is_empty() { None } else { Some(exposed_ports) },
+                    host_config: Some(host_config),
+                    ..Default::default()
+                };
+
+                let opts = CreateContainerOptions { name: name_owned.as_str(), platform: None };
+
+                let response = client
+                    .create_container(Some(opts), config)
+                    .await
+                    .map_err(|e| errors::CommandFailed::new_err(format!(
+                        "Failed to create container {name_owned}: {e}"
+                    )))?;
+
+                eprintln!("[Container] Created: {name_owned} ({})", &response.id[..12]);
+                Ok(response.id)
+            })
+        })
+    }
+
     /// Start a container by name.
     #[pyo3(signature = (name))]
     fn start(&self, py: Python<'_>, name: &str) -> PyResult<()> {
@@ -246,4 +466,93 @@ pub fn container_connect(py: Python<'_>, socket: Option<&str>) -> PyResult<Conta
         eprintln!("[Container] Connected to Docker/Podman daemon");
         Ok(ContainerRuntime { client, runtime })
     })
+}
+
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/// Create a tar.gz archive of a directory for Docker build context.
+fn create_tar_archive(context_path: &Path) -> Result<Vec<u8>, std::io::Error> {
+    let buf = Vec::new();
+    let encoder = flate2::write::GzEncoder::new(buf, flate2::Compression::default());
+    let mut archive = tar::Builder::new(encoder);
+
+    // Walk the directory and add files
+    for entry in walkdir::WalkDir::new(context_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        let relative = path.strip_prefix(context_path).unwrap_or(path);
+
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+
+        if path.is_file() {
+            archive.append_path_with_name(path, relative)?;
+        } else if path.is_dir() && relative.as_os_str() != "" {
+            archive.append_dir(relative, path)?;
+        }
+    }
+
+    let encoder = archive.into_inner()?;
+    encoder.finish()
+}
+
+/// Parse Python list of mount dicts into bollard Mount objects.
+fn parse_mounts(mounts: Option<&Bound<'_, PyList>>) -> PyResult<Vec<Mount>> {
+    let Some(mounts) = mounts else {
+        return Ok(Vec::new());
+    };
+
+    let mut result = Vec::new();
+    for item in mounts.iter() {
+        let dict = item.downcast::<PyDict>()
+            .map_err(|_| PyRuntimeError::new_err("Mount must be a dict"))?;
+
+        let source: String = dict
+            .get_item("source")?
+            .ok_or_else(|| PyRuntimeError::new_err("Mount missing 'source'"))?
+            .extract()?;
+        let target: String = dict
+            .get_item("target")?
+            .ok_or_else(|| PyRuntimeError::new_err("Mount missing 'target'"))?
+            .extract()?;
+        let read_only: bool = dict
+            .get_item("read_only")?
+            .map(|v| v.extract().unwrap_or(false))
+            .unwrap_or(false);
+
+        result.push(Mount {
+            target: Some(target),
+            source: Some(source),
+            typ: Some(MountTypeEnum::BIND),
+            read_only: Some(read_only),
+            ..Default::default()
+        });
+    }
+
+    Ok(result)
+}
+
+/// Parse port mappings into exposed ports + host bindings.
+fn parse_ports(
+    ports: &HashMap<String, String>,
+) -> (HashMap<String, HashMap<(), ()>>, HashMap<String, Option<Vec<PortBinding>>>) {
+    let mut exposed = HashMap::new();
+    let mut bindings = HashMap::new();
+
+    for (container_port, host_port) in ports {
+        exposed.insert(container_port.clone(), HashMap::new());
+        bindings.insert(
+            container_port.clone(),
+            Some(vec![PortBinding {
+                host_ip: Some("0.0.0.0".to_string()),
+                host_port: Some(host_port.clone()),
+            }]),
+        );
+    }
+
+    (exposed, bindings)
 }

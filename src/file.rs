@@ -146,6 +146,16 @@ pub fn replace(path: &str, old: &str, new: &str) -> PyResult<String> {
     Ok(path.to_string())
 }
 
+/// Create a directory (and parents) if it doesn't exist.
+#[pyfunction]
+#[pyo3(signature = (path))]
+pub fn mkdir(path: &str) -> PyResult<String> {
+    eprintln!("[File Mkdir] {path}");
+    fs::create_dir_all(path)
+        .map_err(|e| PyIOError::new_err(format!("Failed to create directory {path}: {e}")))?;
+    Ok(path.to_string())
+}
+
 /// Check if a string/bytes value is empty or whitespace-only.
 #[pyfunction]
 #[pyo3(signature = (value))]
