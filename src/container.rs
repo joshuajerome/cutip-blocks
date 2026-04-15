@@ -15,23 +15,17 @@ use futures_util::StreamExt;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use tokio::runtime::Runtime;
-
 use crate::errors;
 
 /// A connection to the Docker/Podman daemon.
 #[pyclass]
 pub struct ContainerRuntime {
     client: Docker,
-    runtime: Runtime,
 }
 
 impl ContainerRuntime {
     pub fn client(&self) -> &Docker {
         &self.client
-    }
-    pub fn runtime(&self) -> &Runtime {
-        &self.runtime
     }
 }
 
@@ -76,8 +70,9 @@ impl ContainerRuntime {
         let network_owned = network_mode.map(|s| s.to_string());
         let client = self.client.clone();
 
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            self.runtime.block_on(async {
+            rt.block_on(async {
                 let mut opts = BuildImageOptions {
                     t: tag_owned.as_str(),
                     dockerfile: dockerfile_owned.as_str(),
@@ -212,8 +207,9 @@ impl ContainerRuntime {
 
         let client = self.client.clone();
 
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            self.runtime.block_on(async {
+            rt.block_on(async {
                 let host_config = HostConfig {
                     network_mode: network_mode_owned.clone(),
                     privileged: Some(privileged),
@@ -256,8 +252,9 @@ impl ContainerRuntime {
         eprintln!("[Container] Starting: {name}");
         let client = self.client.clone();
         let name = name.to_string();
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            self.runtime.block_on(async {
+            rt.block_on(async {
                 client
                     .start_container(&name, None::<StartContainerOptions<String>>)
                     .await
@@ -273,8 +270,9 @@ impl ContainerRuntime {
         eprintln!("[Container] Stopping: {name}");
         let client = self.client.clone();
         let name = name.to_string();
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            self.runtime.block_on(async {
+            rt.block_on(async {
                 client
                     .stop_container(&name, Some(StopContainerOptions { t: timeout }))
                     .await
@@ -290,8 +288,9 @@ impl ContainerRuntime {
         eprintln!("[Container] Removing: {name}");
         let client = self.client.clone();
         let name = name.to_string();
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            self.runtime.block_on(async {
+            rt.block_on(async {
                 client
                     .remove_container(
                         &name,
@@ -316,8 +315,9 @@ impl ContainerRuntime {
         let client = self.client.clone();
         let name = name.to_string();
         let cmd = cmd.to_string();
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            self.runtime.block_on(async {
+            rt.block_on(async {
                 let exec = client
                     .create_exec(
                         &name,
@@ -374,8 +374,9 @@ impl ContainerRuntime {
         let client = self.client.clone();
         let image = image.to_string();
         let tag = tag.to_string();
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            self.runtime.block_on(async {
+            rt.block_on(async {
                 use bollard::image::CreateImageOptions;
                 let opts = CreateImageOptions {
                     from_image: image.as_str(),
@@ -397,8 +398,9 @@ impl ContainerRuntime {
     fn exists(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
         let client = self.client.clone();
         let name = name.to_string();
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            self.runtime.block_on(async {
+            rt.block_on(async {
                 match client.inspect_container(&name, None).await {
                     Ok(_) => Ok(true),
                     Err(bollard::errors::Error::DockerResponseServerError {
@@ -441,10 +443,8 @@ impl ContainerExecResult {
 #[pyfunction]
 #[pyo3(signature = (socket = None))]
 pub fn container_connect(py: Python<'_>, socket: Option<&str>) -> PyResult<ContainerRuntime> {
+    let rt = crate::runtime::get()?;
     py.allow_threads(|| {
-        let runtime = Runtime::new()
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to create runtime: {e}")))?;
-
         let client = if let Some(socket_path) = socket {
             Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION).map_err(
                 |e| PyRuntimeError::new_err(format!("Failed to connect to {socket_path}: {e}")),
@@ -455,7 +455,7 @@ pub fn container_connect(py: Python<'_>, socket: Option<&str>) -> PyResult<Conta
         };
 
         // Verify connection
-        runtime.block_on(async {
+        rt.block_on(async {
             client.ping().await.map_err(|e| {
                 PyRuntimeError::new_err(format!(
                     "Docker/Podman daemon not reachable: {e}. Is Docker Desktop running?"
@@ -464,7 +464,7 @@ pub fn container_connect(py: Python<'_>, socket: Option<&str>) -> PyResult<Conta
         })?;
 
         eprintln!("[Container] Connected to Docker/Podman daemon");
-        Ok(ContainerRuntime { client, runtime })
+        Ok(ContainerRuntime { client })
     })
 }
 

@@ -7,6 +7,7 @@ pub mod file;
 mod http;
 mod kubectl;
 mod network;
+pub mod runtime;
 mod service;
 mod shell;
 mod ssh;

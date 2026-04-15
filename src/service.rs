@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use tokio::runtime::Runtime;
 
 /// Poll an HTTP endpoint until it returns a success status code.
 #[pyfunction]
@@ -20,8 +19,7 @@ pub fn poll_until_ready(
     let url = url.to_string();
 
     py.allow_threads(|| {
-        let rt =
-            Runtime::new().map_err(|e| PyRuntimeError::new_err(format!("Runtime error: {e}")))?;
+        let rt = crate::runtime::get()?;
 
         rt.block_on(async {
             let client = reqwest::Client::builder()
@@ -69,8 +67,8 @@ pub fn wait_for_exit(
 ) -> PyResult<i64> {
     eprintln!("[Service] Waiting for container {container_name} to exit (timeout {timeout_s}s)");
     let client = runtime.client().clone();
-    let rt = runtime.runtime();
     let name = container_name.to_string();
+    let rt = crate::runtime::get()?;
 
     py.allow_threads(|| {
         rt.block_on(async {
