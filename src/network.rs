@@ -21,7 +21,7 @@ pub fn create(
 ) -> PyResult<()> {
     eprintln!("[Network] Creating: {name} (driver={driver})");
     let client = runtime.client().clone();
-    let rt = runtime.runtime();
+    let rt = crate::runtime::get()?;
     let name = name.to_string();
     let driver = driver.to_string();
     let subnet = subnet.map(|s| s.to_string());
@@ -73,7 +73,7 @@ pub fn create(
 pub fn remove(py: Python<'_>, runtime: &ContainerRuntime, name: &str) -> PyResult<()> {
     eprintln!("[Network] Removing: {name}");
     let client = runtime.client().clone();
-    let rt = runtime.runtime();
+    let rt = crate::runtime::get()?;
     let name = name.to_string();
 
     py.allow_threads(|| {
@@ -92,7 +92,7 @@ pub fn remove(py: Python<'_>, runtime: &ContainerRuntime, name: &str) -> PyResul
 #[pyo3(signature = (runtime, name))]
 pub fn exists(py: Python<'_>, runtime: &ContainerRuntime, name: &str) -> PyResult<bool> {
     let client = runtime.client().clone();
-    let rt = runtime.runtime();
+    let rt = crate::runtime::get()?;
     let name = name.to_string();
 
     py.allow_threads(|| {

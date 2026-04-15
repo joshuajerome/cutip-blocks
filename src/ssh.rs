@@ -12,7 +12,6 @@ use pyo3::prelude::*;
 use russh::client;
 use russh::keys::PublicKey;
 use russh::kex;
-use tokio::runtime::Runtime;
 
 /// Result of a remote command execution.
 #[pyclass]
@@ -57,7 +56,6 @@ impl client::Handler for ClientHandler {
 /// Inner async SSH handle.
 struct SshInner {
     handle: client::Handle<ClientHandler>,
-    runtime: Runtime,
     host: String,
     username: String,
     redact: Vec<String>,
@@ -93,8 +91,9 @@ impl SSHSession {
             inner.username, inner.host, display_cmd
         );
 
+        let rt = crate::runtime::get()?;
         py.allow_threads(|| {
-            inner.runtime.block_on(async {
+            rt.block_on(async {
                 let mut channel =
                     inner.handle.channel_open_session().await.map_err(|e| {
                         PyRuntimeError::new_err(format!("Failed to open channel: {e}"))
@@ -172,8 +171,9 @@ impl SSHSession {
     /// Close the SSH connection.
     fn close(&mut self, py: Python<'_>) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
+            let rt = crate::runtime::get()?;
             py.allow_threads(|| {
-                inner.runtime.block_on(async {
+                rt.block_on(async {
                     let _ = inner
                         .handle
                         .disconnect(russh::Disconnect::ByApplication, "", "en")
@@ -203,11 +203,9 @@ pub fn ssh_connect(
 
     eprintln!("[SSH] Connecting to {}@{}:{}", username, host, port);
 
+    let rt = crate::runtime::get()?;
     py.allow_threads(|| {
-        let runtime = Runtime::new()
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to create runtime: {e}")))?;
-
-        let handle = runtime.block_on(async {
+        let handle = rt.block_on(async {
             let mut config = client::Config::default();
             // Add ECDH NIST P-256/384/521 to the default kex list
             // so we can connect to servers that only support these
@@ -245,7 +243,6 @@ pub fn ssh_connect(
         Ok(SSHSession {
             inner: Some(SshInner {
                 handle,
-                runtime,
                 host,
                 username,
                 redact,

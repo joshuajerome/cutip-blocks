@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use tokio::runtime::Runtime;
 
 /// Result of an HTTP request.
 #[pyclass]
@@ -38,8 +37,8 @@ impl HttpResponse {
     }
 }
 
-fn get_runtime() -> PyResult<Runtime> {
-    Runtime::new().map_err(|e| PyRuntimeError::new_err(format!("Failed to create runtime: {e}")))
+fn get_runtime() -> PyResult<&'static tokio::runtime::Runtime> {
+    crate::runtime::get()
 }
 
 /// Send an HTTP GET request.
