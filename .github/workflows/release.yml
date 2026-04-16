@@ -20,7 +20,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.87.0"
+          toolchain: "1.88.0"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -58,7 +58,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.87.0"
+          toolchain: "1.88.0"
           targets: ${{ matrix.target }}
 
       - name: Set up Python
