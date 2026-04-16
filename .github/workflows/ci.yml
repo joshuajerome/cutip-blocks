@@ -55,7 +55,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.87.0"
 
       - name: Cargo check
         run: cargo check --features pyo3/extension-module
@@ -69,7 +71,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.87.0"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -96,7 +100,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.87.0"
 
       - name: Set up Python
         uses: actions/setup-python@v5
