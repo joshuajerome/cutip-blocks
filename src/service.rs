@@ -15,7 +15,7 @@ pub fn poll_until_ready(
     interval_s: u64,
     verify_tls: bool,
 ) -> PyResult<()> {
-    eprintln!("[Service] Polling {url} (max {retries} attempts, {interval_s}s interval)");
+    dim_log!("[Service] Polling {url} (max {retries} attempts, {interval_s}s interval)");
     let url = url.to_string();
 
     py.allow_threads(|| {
@@ -31,17 +31,17 @@ pub fn poll_until_ready(
             for attempt in 1..=retries {
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
-                        eprintln!("[Service] Ready after {attempt} attempt(s): {url}");
+                        dim_log!("[Service] Ready after {attempt} attempt(s): {url}");
                         return Ok(());
                     }
                     Ok(resp) => {
-                        eprintln!(
+                        dim_log!(
                             "[Service] Attempt {attempt}/{retries}: HTTP {}",
                             resp.status().as_u16()
                         );
                     }
                     Err(e) => {
-                        eprintln!("[Service] Attempt {attempt}/{retries}: {e}");
+                        dim_log!("[Service] Attempt {attempt}/{retries}: {e}");
                     }
                 }
                 if attempt < retries {
@@ -65,7 +65,7 @@ pub fn wait_for_exit(
     container_name: &str,
     timeout_s: u64,
 ) -> PyResult<i64> {
-    eprintln!("[Service] Waiting for container {container_name} to exit (timeout {timeout_s}s)");
+    dim_log!("[Service] Waiting for container {container_name} to exit (timeout {timeout_s}s)");
     let client = runtime.client().clone();
     let name = container_name.to_string();
     let rt = crate::runtime::get()?;
@@ -86,7 +86,7 @@ pub fn wait_for_exit(
                     match result {
                         Ok(exit) => {
                             let code = exit.status_code;
-                            eprintln!("[Service] Container {name} exited with code {code}");
+                            dim_log!("[Service] Container {name} exited with code {code}");
                             return Ok(code);
                         }
                         Err(e) => {

@@ -124,7 +124,7 @@ impl KubectlSession {
             .unwrap_or(&matches[0]);
 
         if matches.len() > 1 {
-            eprintln!(
+            dim_log!(
                 "[kubectl find pod] Multiple pods match '{}': {}. Using: {} ({})",
                 name_prefix,
                 matches
@@ -136,7 +136,7 @@ impl KubectlSession {
                 selected.1,
             );
         } else {
-            eprintln!("[kubectl find pod] Found: {} ({})", selected.0, selected.1);
+            dim_log!("[kubectl find pod] Found: {} ({})", selected.0, selected.1);
         }
 
         Ok(selected.0.clone())
@@ -231,7 +231,7 @@ impl KubectlSession {
                 result.stderr.trim()
             )));
         }
-        eprintln!("[kubectl rollout status] {resource} rolled out successfully");
+        dim_log!("[kubectl rollout status] {resource} rolled out successfully");
         Ok(result)
     }
 
@@ -251,7 +251,7 @@ impl KubectlSession {
         let remote_patch_file = format!("/tmp/{deployment}-patched.yaml");
 
         // Fetch current deployment YAML
-        eprintln!("[kubectl patch deployment] Fetching {ns}/{deployment} ...");
+        dim_log!("[kubectl patch deployment] Fetching {ns}/{deployment} ...");
         let get_cmd = format!("kubectl get deployment -n {ns} {deployment} -o yaml");
         let result = self.exec_ssh(py, &get_cmd)?;
         if result.exit_code != 0 || result.stdout.trim().is_empty() {
@@ -319,7 +319,7 @@ impl KubectlSession {
             .exit_code
             == 0;
         if has_existing {
-            eprintln!("[kubectl patch file] Backing up {target_file} → {backup}");
+            dim_log!("[kubectl patch file] Backing up {target_file} → {backup}");
             self.exec_ssh(py, &format!("cp {target_file} {backup}"))?;
         }
 
@@ -327,7 +327,7 @@ impl KubectlSession {
         let has_backup = self.exec_ssh(py, &format!("test -s {backup}"))?.exit_code == 0;
 
         if has_backup {
-            eprintln!("[kubectl patch file] Re-run detected — restoring from {backup}");
+            dim_log!("[kubectl patch file] Re-run detected — restoring from {backup}");
             self.exec_ssh(py, &format!("cp {backup} {target_file}"))?;
         } else {
             // First run: verify source exists, copy from pod
@@ -342,7 +342,7 @@ impl KubectlSession {
             }
 
             let temp_file = format!("{target_file}.tmp");
-            eprintln!("[kubectl patch file] Copying {source_file} from pod → {target_file}");
+            dim_log!("[kubectl patch file] Copying {source_file} from pod → {target_file}");
             let copy_cmd = format!(
                 "bash -c 'kubectl exec -n {ns} deploy/{deployment} -- cat {source_file} > {temp_file}'"
             );
@@ -363,7 +363,7 @@ impl KubectlSession {
 
         // Apply sed replacements
         for (original, patched) in &replacements {
-            eprintln!(
+            dim_log!(
                 "[kubectl patch file] sed: {}... → {}...",
                 &original[..original.len().min(50)],
                 &patched[..patched.len().min(50)]
@@ -377,10 +377,10 @@ impl KubectlSession {
         }
 
         // Set permissions
-        eprintln!("[kubectl patch file] chmod {chmod} {target_file}");
+        dim_log!("[kubectl patch file] chmod {chmod} {target_file}");
         self.exec_ssh(py, &format!("chmod {chmod} {target_file}"))?;
 
-        eprintln!("[kubectl patch file] Patched and ready: {target_file}");
+        dim_log!("[kubectl patch file] Patched and ready: {target_file}");
         Ok(target_file)
     }
 }
@@ -416,13 +416,13 @@ fn patch_deployment_yaml(
             .any(|v| v.get("name").and_then(|n| n.as_str()) == Some(volume_name))
         {
             volumes.push(volume_entry);
-            eprintln!("[kubectl patch deployment] Added volume '{volume_name}'");
+            dim_log!("[kubectl patch deployment] Added volume '{volume_name}'");
         } else {
-            eprintln!("[kubectl patch deployment] Volume '{volume_name}' already present");
+            dim_log!("[kubectl patch deployment] Volume '{volume_name}' already present");
         }
     } else {
         spec["volumes"] = serde_yaml::Value::Sequence(vec![volume_entry]);
-        eprintln!("[kubectl patch deployment] Added volume '{volume_name}'");
+        dim_log!("[kubectl patch deployment] Added volume '{volume_name}'");
     }
 
     // Inject volumeMount on first container
@@ -451,13 +451,13 @@ fn patch_deployment_yaml(
             .any(|m| m.get("name").and_then(|n| n.as_str()) == Some(volume_name))
         {
             mounts.push(mount_entry);
-            eprintln!("[kubectl patch deployment] Added volumeMount '{volume_name}'");
+            dim_log!("[kubectl patch deployment] Added volumeMount '{volume_name}'");
         } else {
-            eprintln!("[kubectl patch deployment] VolumeMount '{volume_name}' already present");
+            dim_log!("[kubectl patch deployment] VolumeMount '{volume_name}' already present");
         }
     } else {
         container["volumeMounts"] = serde_yaml::Value::Sequence(vec![mount_entry]);
-        eprintln!("[kubectl patch deployment] Added volumeMount '{volume_name}'");
+        dim_log!("[kubectl patch deployment] Added volumeMount '{volume_name}'");
     }
 
     // Strip fields that block kubectl apply
@@ -487,7 +487,7 @@ fn patch_deployment_yaml(
 #[pyfunction]
 #[pyo3(signature = (sesh, *, namespace))]
 pub fn kubectl_connect(sesh: Py<SSHSession>, namespace: &str) -> KubectlSession {
-    eprintln!("[kubectl] Session bound to namespace '{namespace}'");
+    dim_log!("[kubectl] Session bound to namespace '{namespace}'");
     KubectlSession {
         sesh,
         namespace: namespace.to_string(),

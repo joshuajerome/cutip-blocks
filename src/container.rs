@@ -44,7 +44,7 @@ impl ContainerRuntime {
         build_args: Option<HashMap<String, String>>,
         network_mode: Option<&str>,
     ) -> PyResult<String> {
-        eprintln!("[Container] Building: {tag} from {context}/{dockerfile}");
+        dim_log!("[Container] Building: {tag} from {context}/{dockerfile}");
 
         let context_path = Path::new(context);
         if !context_path.is_dir() {
@@ -102,7 +102,7 @@ impl ContainerRuntime {
                             if let Some(ref stream_str) = output.stream {
                                 let line = stream_str.trim_end();
                                 if !line.is_empty() {
-                                    eprintln!("{line}");
+                                    dim_log!("  {line}");
                                 }
                             }
                             if let Some(ref id) = output.aux {
@@ -124,7 +124,7 @@ impl ContainerRuntime {
                     }
                 }
 
-                eprintln!("[Container] Built: {tag_owned}");
+                dim_log!("[Container] Built: {tag_owned}");
                 Ok(image_id)
             })
         })
@@ -165,7 +165,7 @@ impl ContainerRuntime {
         ports: Option<HashMap<String, String>>,
         restart_policy: Option<&str>,
     ) -> PyResult<String> {
-        eprintln!("[Container] Creating: {name} from {image}");
+        dim_log!("[Container] Creating: {name} from {image}");
 
         let name_owned = name.to_string();
         let image_owned = image.to_string();
@@ -242,7 +242,7 @@ impl ContainerRuntime {
                         "Failed to create container {name_owned}: {e}"
                     )))?;
 
-                eprintln!("[Container] Created: {name_owned} ({})", &response.id[..12]);
+                dim_log!("[Container] Created: {name_owned} ({})", &response.id[..12]);
                 Ok(response.id)
             })
         })
@@ -251,7 +251,7 @@ impl ContainerRuntime {
     /// Start a container by name.
     #[pyo3(signature = (name))]
     fn start(&self, py: Python<'_>, name: &str) -> PyResult<()> {
-        eprintln!("[Container] Starting: {name}");
+        dim_log!("[Container] Starting: {name}");
         let client = self.client.clone();
         let name = name.to_string();
         let rt = crate::runtime::get()?;
@@ -269,7 +269,7 @@ impl ContainerRuntime {
     /// Stop a running container.
     #[pyo3(signature = (name, timeout = 10))]
     fn stop(&self, py: Python<'_>, name: &str, timeout: i64) -> PyResult<()> {
-        eprintln!("[Container] Stopping: {name}");
+        dim_log!("[Container] Stopping: {name}");
         let client = self.client.clone();
         let name = name.to_string();
         let rt = crate::runtime::get()?;
@@ -287,7 +287,7 @@ impl ContainerRuntime {
     /// Remove a container.
     #[pyo3(signature = (name, force = false))]
     fn remove(&self, py: Python<'_>, name: &str, force: bool) -> PyResult<()> {
-        eprintln!("[Container] Removing: {name}");
+        dim_log!("[Container] Removing: {name}");
         let client = self.client.clone();
         let name = name.to_string();
         let rt = crate::runtime::get()?;
@@ -313,7 +313,7 @@ impl ContainerRuntime {
     /// Execute a command inside a running container.
     #[pyo3(signature = (name, cmd))]
     fn exec(&self, py: Python<'_>, name: &str, cmd: &str) -> PyResult<ContainerExecResult> {
-        eprintln!("[Container Exec] {name} :: {cmd}");
+        dim_log!("[Container Exec] {name} :: {cmd}");
         let client = self.client.clone();
         let name = name.to_string();
         let cmd = cmd.to_string();
@@ -372,7 +372,7 @@ impl ContainerRuntime {
     /// Pull an image from a registry.
     #[pyo3(signature = (image, tag = "latest"))]
     fn pull(&self, py: Python<'_>, image: &str, tag: &str) -> PyResult<()> {
-        eprintln!("[Container] Pulling: {image}:{tag}");
+        dim_log!("[Container] Pulling: {image}:{tag}");
         let client = self.client.clone();
         let image = image.to_string();
         let tag = tag.to_string();
@@ -389,7 +389,7 @@ impl ContainerRuntime {
                 while let Some(result) = stream.next().await {
                     result.map_err(|e| PyRuntimeError::new_err(format!("Pull failed: {e}")))?;
                 }
-                eprintln!("[Container] Pulled: {image}:{tag}");
+                dim_log!("[Container] Pulled: {image}:{tag}");
                 Ok(())
             })
         })
@@ -465,7 +465,7 @@ pub fn container_connect(py: Python<'_>, socket: Option<&str>) -> PyResult<Conta
             })
         })?;
 
-        eprintln!("[Container] Connected to Docker/Podman daemon");
+        dim_log!("[Container] Connected to Docker/Podman daemon");
         Ok(ContainerRuntime { client })
     })
 }

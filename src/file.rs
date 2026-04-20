@@ -11,7 +11,7 @@ use pyo3::types::PyDict;
 #[pyfunction]
 #[pyo3(signature = (src, dest))]
 pub fn copy(src: &str, dest: &str) -> PyResult<String> {
-    eprintln!("[File Copy] {src} → {dest}");
+    dim_log!("[File Copy] {src} → {dest}");
     if let Some(parent) = Path::new(dest).parent() {
         fs::create_dir_all(parent).map_err(|e| {
             PyIOError::new_err(format!("Failed to create {}: {e}", parent.display()))
@@ -26,7 +26,7 @@ pub fn copy(src: &str, dest: &str) -> PyResult<String> {
 #[pyfunction]
 #[pyo3(signature = (src, dest, clean = false))]
 pub fn copy_tree(src: &str, dest: &str, clean: bool) -> PyResult<String> {
-    eprintln!(
+    dim_log!(
         "[File Copy Tree] {src} → {dest}{}",
         if clean { " (clean)" } else { "" }
     );
@@ -67,7 +67,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> PyResult<()> {
 #[pyfunction]
 #[pyo3(signature = (path))]
 pub fn read_yaml(py: Python<'_>, path: &str) -> PyResult<PyObject> {
-    eprintln!("[File Read YAML] {path}");
+    dim_log!("[File Read YAML] {path}");
     let content = fs::read_to_string(path)
         .map_err(|e| PyIOError::new_err(format!("Failed to read {path}: {e}")))?;
     let value: serde_json::Value = serde_yaml::from_str(&content)
@@ -79,7 +79,7 @@ pub fn read_yaml(py: Python<'_>, path: &str) -> PyResult<PyObject> {
 #[pyfunction]
 #[pyo3(signature = (path, data))]
 pub fn write_yaml(path: &str, data: &Bound<'_, PyDict>) -> PyResult<String> {
-    eprintln!("[File Write YAML] {path}");
+    dim_log!("[File Write YAML] {path}");
     let json_str = pythonize_to_json(data)?;
     let value: serde_json::Value = serde_json::from_str(&json_str)
         .map_err(|e| PyRuntimeError::new_err(format!("JSON conversion error: {e}")))?;
@@ -98,7 +98,7 @@ pub fn write_yaml(path: &str, data: &Bound<'_, PyDict>) -> PyResult<String> {
 #[pyfunction]
 #[pyo3(signature = (path))]
 pub fn read_json(py: Python<'_>, path: &str) -> PyResult<PyObject> {
-    eprintln!("[File Read JSON] {path}");
+    dim_log!("[File Read JSON] {path}");
     let content = fs::read_to_string(path)
         .map_err(|e| PyIOError::new_err(format!("Failed to read {path}: {e}")))?;
     let value: serde_json::Value = serde_json::from_str(&content)
@@ -110,7 +110,7 @@ pub fn read_json(py: Python<'_>, path: &str) -> PyResult<PyObject> {
 #[pyfunction]
 #[pyo3(signature = (path, data))]
 pub fn write_json(path: &str, data: &Bound<'_, PyDict>) -> PyResult<String> {
-    eprintln!("[File Write JSON] {path}");
+    dim_log!("[File Write JSON] {path}");
     let json_str = pythonize_to_json(data)?;
     if let Some(parent) = Path::new(path).parent() {
         fs::create_dir_all(parent)
@@ -130,7 +130,7 @@ pub fn write_json(path: &str, data: &Bound<'_, PyDict>) -> PyResult<String> {
 #[pyfunction]
 #[pyo3(signature = (path, old, new))]
 pub fn replace(path: &str, old: &str, new: &str) -> PyResult<String> {
-    eprintln!(
+    dim_log!(
         "[File Replace] {path} :: '{}'... → '{}'...",
         &old[..old.len().min(60)],
         &new[..new.len().min(60)]
@@ -138,7 +138,7 @@ pub fn replace(path: &str, old: &str, new: &str) -> PyResult<String> {
     let content = fs::read_to_string(path)
         .map_err(|e| PyIOError::new_err(format!("Failed to read {path}: {e}")))?;
     if !content.contains(old) {
-        eprintln!("[File Replace] Pattern not found in {path}");
+        dim_log!("[File Replace] Pattern not found in {path}");
     }
     let updated = content.replace(old, new);
     fs::write(path, &updated)
@@ -150,7 +150,7 @@ pub fn replace(path: &str, old: &str, new: &str) -> PyResult<String> {
 #[pyfunction]
 #[pyo3(signature = (path))]
 pub fn mkdir(path: &str) -> PyResult<String> {
-    eprintln!("[File Mkdir] {path}");
+    dim_log!("[File Mkdir] {path}");
     fs::create_dir_all(path)
         .map_err(|e| PyIOError::new_err(format!("Failed to create directory {path}: {e}")))?;
     Ok(path.to_string())

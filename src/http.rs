@@ -51,7 +51,7 @@ pub fn get(
     verify_tls: bool,
     timeout_s: u64,
 ) -> PyResult<HttpResponse> {
-    eprintln!("[HTTP GET] {url}");
+    dim_log!("[HTTP GET] {url}");
     let url = url.to_string();
     let headers = headers.unwrap_or_default();
 
@@ -84,7 +84,7 @@ pub fn post(
     verify_tls: bool,
     timeout_s: u64,
 ) -> PyResult<HttpResponse> {
-    eprintln!("[HTTP POST] {url}");
+    dim_log!("[HTTP POST] {url}");
     let url = url.to_string();
     let headers = headers.unwrap_or_default();
     let json_body = match json {
@@ -129,7 +129,7 @@ pub fn put(
     verify_tls: bool,
     timeout_s: u64,
 ) -> PyResult<HttpResponse> {
-    eprintln!("[HTTP PUT] {url}");
+    dim_log!("[HTTP PUT] {url}");
     let url = url.to_string();
     let headers = headers.unwrap_or_default();
     let json_body = match json {
@@ -172,7 +172,7 @@ pub fn delete(
     verify_tls: bool,
     timeout_s: u64,
 ) -> PyResult<HttpResponse> {
-    eprintln!("[HTTP DELETE] {url}");
+    dim_log!("[HTTP DELETE] {url}");
     let url = url.to_string();
     let headers = headers.unwrap_or_default();
 

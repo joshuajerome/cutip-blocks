@@ -24,7 +24,7 @@ pub fn render(
     vars: HashMap<String, String>,
     dest: Option<&str>,
 ) -> PyResult<String> {
-    eprintln!("[Template] Rendering {src}");
+    dim_log!("[Template] Rendering {src}");
 
     let template = fs::read_to_string(src)
         .map_err(|e| PyIOError::new_err(format!("Failed to read template {src}: {e}")))?;
@@ -38,7 +38,7 @@ pub fn render(
         }
         fs::write(dest_path, &rendered)
             .map_err(|e| PyIOError::new_err(format!("Failed to write {dest_path}: {e}")))?;
-        eprintln!("[Template] Wrote {dest_path}");
+        dim_log!("[Template] Wrote {dest_path}");
     }
 
     Ok(rendered)

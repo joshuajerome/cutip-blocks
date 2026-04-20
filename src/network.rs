@@ -19,7 +19,7 @@ pub fn create(
     subnet: Option<&str>,
     gateway: Option<&str>,
 ) -> PyResult<()> {
-    eprintln!("[Network] Creating: {name} (driver={driver})");
+    dim_log!("[Network] Creating: {name} (driver={driver})");
     let client = runtime.client().clone();
     let rt = crate::runtime::get()?;
     let name = name.to_string();
@@ -61,7 +61,7 @@ pub fn create(
                 PyRuntimeError::new_err(format!("Failed to create network {name}: {e}"))
             })?;
 
-            eprintln!("[Network] Created: {name}");
+            dim_log!("[Network] Created: {name}");
             Ok(())
         })
     })
@@ -71,7 +71,7 @@ pub fn create(
 #[pyfunction]
 #[pyo3(signature = (runtime, name))]
 pub fn remove(py: Python<'_>, runtime: &ContainerRuntime, name: &str) -> PyResult<()> {
-    eprintln!("[Network] Removing: {name}");
+    dim_log!("[Network] Removing: {name}");
     let client = runtime.client().clone();
     let rt = crate::runtime::get()?;
     let name = name.to_string();
@@ -81,7 +81,7 @@ pub fn remove(py: Python<'_>, runtime: &ContainerRuntime, name: &str) -> PyResul
             client.remove_network(&name).await.map_err(|e| {
                 PyRuntimeError::new_err(format!("Failed to remove network {name}: {e}"))
             })?;
-            eprintln!("[Network] Removed: {name}");
+            dim_log!("[Network] Removed: {name}");
             Ok(())
         })
     })

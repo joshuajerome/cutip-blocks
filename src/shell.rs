@@ -39,7 +39,7 @@ pub fn run(
     } else {
         cmd.to_string()
     };
-    eprintln!("[Shell] {cmd_display}");
+    dim_log!("[Shell] {cmd_display}");
 
     let cmd_owned = cmd.to_string();
     let cwd_owned = cwd.map(|s| s.to_string());

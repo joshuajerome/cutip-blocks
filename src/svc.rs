@@ -10,7 +10,7 @@ use crate::errors;
 use crate::ssh::ExecResult;
 
 fn systemctl(py: Python<'_>, action: &str, service: &str) -> PyResult<ExecResult> {
-    eprintln!("[Svc] systemctl {action} {service}");
+    dim_log!("[Svc] systemctl {action} {service}");
 
     let action = action.to_string();
     let service = service.to_string();
