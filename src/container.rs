@@ -447,13 +447,27 @@ impl ContainerExecResult {
 pub fn container_connect(py: Python<'_>, socket: Option<&str>) -> PyResult<ContainerRuntime> {
     let rt = crate::runtime::get()?;
     py.allow_threads(|| {
+        // Use 1-hour timeout to support long-running builds (npm install can take 15+ min)
         let client = if let Some(socket_path) = socket {
-            Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION).map_err(
+            Docker::connect_with_socket(socket_path, 3600, bollard::API_DEFAULT_VERSION).map_err(
                 |e| PyRuntimeError::new_err(format!("Failed to connect to {socket_path}: {e}")),
             )?
         } else {
-            Docker::connect_with_local_defaults()
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to connect to Docker: {e}")))?
+            #[cfg(unix)]
+            let c = Docker::connect_with_socket(
+                "/var/run/docker.sock",
+                3600,
+                bollard::API_DEFAULT_VERSION,
+            ).map_err(|e| PyRuntimeError::new_err(format!("Failed to connect to Docker: {e}")))?;
+
+            #[cfg(windows)]
+            let c = Docker::connect_with_named_pipe(
+                "//./pipe/docker_engine",
+                3600,
+                bollard::API_DEFAULT_VERSION,
+            ).map_err(|e| PyRuntimeError::new_err(format!("Failed to connect to Docker: {e}")))?;
+
+            c
         };
 
         // Verify connection
