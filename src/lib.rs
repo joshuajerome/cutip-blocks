@@ -1,5 +1,14 @@
 use pyo3::prelude::*;
 
+/// Log a message in dim gray (ANSI 90) to distinguish rsty subprocess output
+/// from cutip's orchestration output.
+#[macro_export]
+macro_rules! dim_log {
+    ($($arg:tt)*) => {
+        eprintln!("\x1b[90m  {}\x1b[0m", format!($($arg)*))
+    };
+}
+
 mod config;
 mod container;
 pub mod errors;

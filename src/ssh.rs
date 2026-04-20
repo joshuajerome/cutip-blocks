@@ -86,7 +86,7 @@ impl SSHSession {
             .redact
             .iter()
             .fold(cmd_owned.clone(), |s, secret| s.replace(secret, "****"));
-        eprintln!(
+        dim_log!(
             "[SSH] ssh {}@{} :: {}",
             inner.username, inner.host, display_cmd
         );
@@ -164,7 +164,7 @@ impl SSHSession {
                 result.stderr.trim()
             )));
         }
-        eprintln!("[SSH Probe] Authenticated as: {}", result.stdout.trim());
+        dim_log!("[SSH Probe] Authenticated as: {}", result.stdout.trim());
         Ok(result)
     }
 
@@ -180,7 +180,7 @@ impl SSHSession {
                         .await;
                 });
             });
-            eprintln!("[SSH] Connection closed: {}", inner.host);
+            dim_log!("[SSH] Connection closed: {}", inner.host);
         }
         Ok(())
     }
@@ -201,7 +201,7 @@ pub fn ssh_connect(
     let password = password.to_string();
     let redact = vec![password.clone()];
 
-    eprintln!("[SSH] Connecting to {}@{}:{}", username, host, port);
+    dim_log!("[SSH] Connecting to {}@{}:{}", username, host, port);
 
     let rt = crate::runtime::get()?;
     py.allow_threads(|| {
@@ -236,7 +236,7 @@ pub fn ssh_connect(
                 )));
             }
 
-            eprintln!("[SSH] Connected: {}@{}:{}", username, host, port);
+            dim_log!("[SSH] Connected: {}@{}:{}", username, host, port);
             Ok(session)
         })?;
 

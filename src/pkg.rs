@@ -73,7 +73,7 @@ fn remove_cmd(manager: &str, packages: &[String]) -> Vec<String> {
 #[pyo3(signature = (packages))]
 pub fn install(py: Python<'_>, packages: Vec<String>) -> PyResult<()> {
     let manager = detect_pkg_manager()?;
-    eprintln!("[Pkg] Installing via {manager}: {}", packages.join(", "));
+    dim_log!("[Pkg] Installing via {manager}: {}", packages.join(", "));
 
     let cmd = install_cmd(manager, &packages);
 
@@ -91,7 +91,7 @@ pub fn install(py: Python<'_>, packages: Vec<String>) -> PyResult<()> {
             )));
         }
 
-        eprintln!("[Pkg] Installed: {}", packages.join(", "));
+        dim_log!("[Pkg] Installed: {}", packages.join(", "));
         Ok(())
     })
 }
@@ -103,7 +103,7 @@ pub fn install(py: Python<'_>, packages: Vec<String>) -> PyResult<()> {
 #[pyo3(signature = (packages))]
 pub fn remove(py: Python<'_>, packages: Vec<String>) -> PyResult<()> {
     let manager = detect_pkg_manager()?;
-    eprintln!("[Pkg] Removing via {manager}: {}", packages.join(", "));
+    dim_log!("[Pkg] Removing via {manager}: {}", packages.join(", "));
 
     let cmd = remove_cmd(manager, &packages);
 
@@ -121,7 +121,7 @@ pub fn remove(py: Python<'_>, packages: Vec<String>) -> PyResult<()> {
             )));
         }
 
-        eprintln!("[Pkg] Removed: {}", packages.join(", "));
+        dim_log!("[Pkg] Removed: {}", packages.join(", "));
         Ok(())
     })
 }
@@ -131,7 +131,7 @@ pub fn remove(py: Python<'_>, packages: Vec<String>) -> PyResult<()> {
 #[pyo3(signature = ())]
 pub fn update(py: Python<'_>) -> PyResult<()> {
     let manager = detect_pkg_manager()?;
-    eprintln!("[Pkg] Updating package index via {manager}");
+    dim_log!("[Pkg] Updating package index via {manager}");
 
     let cmd: Vec<String> = match manager {
         "apt-get" => vec!["sh".into(), "-c".into(), "DEBIAN_FRONTEND=noninteractive apt-get update".into()],

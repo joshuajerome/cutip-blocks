@@ -10,7 +10,7 @@ use pyo3::prelude::*;
 #[pyo3(signature = (path))]
 pub fn path_exists(path: &str) -> bool {
     let exists = Path::new(path).exists();
-    eprintln!("[Validate] path_exists({path}): {exists}");
+    dim_log!("[Validate] path_exists({path}): {exists}");
     exists
 }
 
@@ -19,7 +19,7 @@ pub fn path_exists(path: &str) -> bool {
 #[pyo3(signature = (name))]
 pub fn env_var_set(name: &str) -> bool {
     let set = std::env::var(name).map_or(false, |v| !v.is_empty());
-    eprintln!("[Validate] env_var_set({name}): {set}");
+    dim_log!("[Validate] env_var_set({name}): {set}");
     set
 }
 
@@ -28,6 +28,6 @@ pub fn env_var_set(name: &str) -> bool {
 #[pyo3(signature = (addr))]
 pub fn ip_valid(addr: &str) -> bool {
     let valid = addr.trim().parse::<IpAddr>().is_ok();
-    eprintln!("[Validate] ip_valid({addr}): {valid}");
+    dim_log!("[Validate] ip_valid({addr}): {valid}");
     valid
 }
