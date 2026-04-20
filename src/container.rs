@@ -91,7 +91,9 @@ impl ContainerRuntime {
                     .collect();
                 opts.buildargs = args_str;
 
-                let mut stream = client.build_image(opts, None, Some(tar_bytes.into()));
+                // Pass empty credentials map to avoid Podman X-Registry-Config parse error on Windows
+                let empty_creds: HashMap<String, bollard::auth::DockerCredentials> = HashMap::new();
+                let mut stream = client.build_image(opts, Some(empty_creds), Some(tar_bytes.into()));
                 let mut image_id = String::new();
 
                 while let Some(result) = stream.next().await {
