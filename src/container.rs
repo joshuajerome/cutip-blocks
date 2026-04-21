@@ -34,7 +34,7 @@ impl ContainerRuntime {
     /// Build an image from a Dockerfile.
     ///
     /// Streams build output to stderr. Returns the image ID.
-    #[pyo3(signature = (*, context, dockerfile, tag, build_args = None, network_mode = None))]
+    #[pyo3(signature = (*, context, dockerfile, tag, build_args = None, network_mode = None, timeout = 300))]
     fn build(
         &self,
         py: Python<'_>,
@@ -43,8 +43,9 @@ impl ContainerRuntime {
         tag: &str,
         build_args: Option<HashMap<String, String>>,
         network_mode: Option<&str>,
+        timeout: u64,
     ) -> PyResult<String> {
-        dim_log!("[Container] Building: {tag} from {context}/{dockerfile}");
+        dim_log!("[Container] Building: {tag} from {context}/{dockerfile} (timeout: {timeout}s)");
 
         let context_path = Path::new(context);
         if !context_path.is_dir() {
@@ -95,8 +96,16 @@ impl ContainerRuntime {
                 let empty_creds: HashMap<String, bollard::auth::DockerCredentials> = HashMap::new();
                 let mut stream = client.build_image(opts, Some(empty_creds), Some(tar_bytes.into()));
                 let mut image_id = String::new();
+                let idle_timeout = std::time::Duration::from_secs(timeout);
 
-                while let Some(result) = stream.next().await {
+                loop {
+                    let result = match tokio::time::timeout(idle_timeout, stream.next()).await {
+                        Ok(Some(r)) => r,
+                        Ok(None) => break, // stream ended
+                        Err(_) => return Err(errors::TimeoutError::new_err(format!(
+                            "Build timed out — no output for {timeout}s. Increase with timeout= parameter."
+                        ))),
+                    };
                     match result {
                         Ok(output) => {
                             if let Some(ref stream_str) = output.stream {
@@ -449,21 +458,21 @@ pub fn container_connect(py: Python<'_>, socket: Option<&str>) -> PyResult<Conta
     py.allow_threads(|| {
         // Use 1-hour timeout to support long-running builds (npm install can take 15+ min)
         let client = if let Some(socket_path) = socket {
-            Docker::connect_with_socket(socket_path, 3600, bollard::API_DEFAULT_VERSION).map_err(
+            Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION).map_err(
                 |e| PyRuntimeError::new_err(format!("Failed to connect to {socket_path}: {e}")),
             )?
         } else {
             #[cfg(unix)]
             let c = Docker::connect_with_socket(
                 "/var/run/docker.sock",
-                3600,
+                120,
                 bollard::API_DEFAULT_VERSION,
             ).map_err(|e| PyRuntimeError::new_err(format!("Failed to connect to Docker: {e}")))?;
 
             #[cfg(windows)]
             let c = Docker::connect_with_named_pipe(
                 "//./pipe/docker_engine",
-                3600,
+                120,
                 bollard::API_DEFAULT_VERSION,
             ).map_err(|e| PyRuntimeError::new_err(format!("Failed to connect to Docker: {e}")))?;
 

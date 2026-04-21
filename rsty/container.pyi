@@ -20,10 +20,11 @@ class ContainerRuntime:
         tag: str,
         build_args: dict[str, str] | None = None,
         network_mode: str | None = None,
+        timeout: int = 300,
     ) -> str:
         """Build an image from a Dockerfile.
 
-        Streams build output to stderr.
+        Streams build output to stderr in dim gray.
 
         Args:
             context: Path to the build context directory.
