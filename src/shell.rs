@@ -67,26 +67,67 @@ pub fn run(
         }
 
         if stream {
-            // Inherit stdio — output goes directly to console in real-time
-            command.stdout(Stdio::inherit());
-            command.stderr(Stdio::inherit());
+            // Pipe stdout+stderr and print each line in dim gray, indented
+            command.stdout(Stdio::piped());
+            command.stderr(Stdio::piped());
 
-            let status = command
-                .status()
+            let mut child = command
+                .spawn()
                 .map_err(|e| errors::ConnectionError::new_err(format!("Failed to execute command: {e}")))?;
+
+            // Read stdout and stderr in threads to avoid deadlock
+            let stdout = child.stdout.take();
+            let stderr = child.stderr.take();
+
+            let stdout_handle = std::thread::spawn(move || {
+                if let Some(stdout) = stdout {
+                    use std::io::BufRead;
+                    let reader = std::io::BufReader::new(stdout);
+                    for line in reader.lines() {
+                        if let Ok(line) = line {
+                            eprintln!("\x1b[90m      {}\x1b[0m", line);
+                        }
+                    }
+                }
+            });
+
+            let stderr_handle = std::thread::spawn(move || {
+                let mut stderr_text = String::new();
+                if let Some(stderr) = stderr {
+                    use std::io::BufRead;
+                    let reader = std::io::BufReader::new(stderr);
+                    for line in reader.lines() {
+                        if let Ok(line) = line {
+                            eprintln!("\x1b[90m      {}\x1b[0m", line);
+                            stderr_text.push_str(&line);
+                            stderr_text.push('\n');
+                        }
+                    }
+                }
+                stderr_text
+            });
+
+            stdout_handle.join().ok();
+            let stderr_text = stderr_handle.join().unwrap_or_default();
+
+            let status = child.wait()
+                .map_err(|e| errors::ConnectionError::new_err(format!("Failed to wait for command: {e}")))?;
 
             let exit_code = status.code().unwrap_or(-1);
 
             if check && exit_code != 0 {
-                return Err(errors::CommandFailed::new_err(
+                let err_msg = if stderr_text.trim().is_empty() {
                     format!("Command failed with exit code {exit_code}: {cmd_owned}")
-                ));
+                } else {
+                    format!("Command failed with exit code {exit_code}: {}", stderr_text.trim())
+                };
+                return Err(errors::CommandFailed::new_err(err_msg));
             }
 
             Ok(ExecResult {
                 exit_code,
                 stdout: String::new(),
-                stderr: String::new(),
+                stderr: stderr_text,
             })
         } else {
             let output = command
