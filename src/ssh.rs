@@ -6,12 +6,15 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::Duration;
 
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyTimeoutError};
 use pyo3::prelude::*;
+use regex::Regex;
 use russh::client;
 use russh::keys::PublicKey;
 use russh::kex;
+use russh::ChannelMsg;
 
 /// Result of a remote command execution.
 #[pyclass]
@@ -181,6 +184,261 @@ impl SSHSession {
                 });
             });
             dim_log!("[SSH] Connection closed: {}", inner.host);
+        }
+        Ok(())
+    }
+
+    /// Open an interactive PTY shell session.
+    ///
+    /// Returns a ShellSession with expect/send methods for automating
+    /// interactive CLI menus and prompts.
+    fn shell(&mut self, py: Python<'_>) -> PyResult<ShellSession> {
+        let inner = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("SSH session is closed"))?;
+
+        let host = inner.host.clone();
+        let redact = inner.redact.clone();
+
+        dim_log!("[SSH Shell] Opening PTY session on {}", host);
+
+        let rt = crate::runtime::get()?;
+        let channel = py.allow_threads(|| {
+            rt.block_on(async {
+                let channel: russh::Channel<russh::client::Msg> = inner
+                    .handle
+                    .channel_open_session()
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!("Failed to open channel: {e}")))?;
+
+                channel
+                    .request_pty(false, "xterm", 80, 24, 0, 0, &[])
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!("Failed to request PTY: {e}")))?;
+
+                channel
+                    .request_shell(false)
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!("Failed to request shell: {e}")))?;
+
+                Ok::<_, PyErr>(channel)
+            })
+        })?;
+
+        dim_log!("[SSH Shell] PTY session opened on {}", host);
+
+        Ok(ShellSession {
+            channel: Some(channel),
+            buffer: String::new(),
+            host,
+            redact,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ShellSession — interactive PTY with expect/send
+// ---------------------------------------------------------------------------
+
+/// Interactive PTY shell session with expect/send pattern matching.
+///
+/// Created via `SSHSession.shell()`. Automates interactive CLI menus
+/// by sending input and waiting for expected output patterns.
+#[pyclass]
+pub struct ShellSession {
+    channel: Option<russh::Channel<russh::client::Msg>>,
+    buffer: String,
+    host: String,
+    redact: Vec<String>,
+}
+
+impl ShellSession {
+    /// Read available data from the channel into the buffer, with timeout.
+    fn read_into_buffer(
+        channel: &mut russh::Channel<russh::client::Msg>,
+        buffer: &mut String,
+        timeout: Duration,
+    ) -> Result<bool, PyErr> {
+        let rt = crate::runtime::get()?;
+        rt.block_on(async {
+            match tokio::time::timeout(timeout, channel.wait()).await {
+                Ok(Some(ChannelMsg::Data { data })) => {
+                    buffer.push_str(&String::from_utf8_lossy(&data));
+                    Ok(true)
+                }
+                Ok(Some(ChannelMsg::ExtendedData { data, .. })) => {
+                    buffer.push_str(&String::from_utf8_lossy(&data));
+                    Ok(true)
+                }
+                Ok(Some(ChannelMsg::Eof)) | Ok(None) => Ok(false),
+                Ok(Some(_)) => Ok(true),
+                Err(_) => Err(PyTimeoutError::new_err("Timed out waiting for data")),
+            }
+        })
+    }
+}
+
+#[pymethods]
+impl ShellSession {
+    /// Wait until a regex pattern appears in the output.
+    ///
+    /// Args:
+    ///     pattern: Regex pattern to match against accumulated output.
+    ///     timeout: Seconds to wait before raising TimeoutError (default: 30).
+    ///
+    /// Returns:
+    ///     The text matched by the pattern.
+    #[pyo3(signature = (pattern, timeout = 30))]
+    fn expect(&mut self, py: Python<'_>, pattern: &str, timeout: u64) -> PyResult<String> {
+        let channel = self
+            .channel
+            .as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("Shell session is closed"))?;
+
+        let re = Regex::new(pattern)
+            .map_err(|e| PyRuntimeError::new_err(format!("Invalid regex: {e}")))?;
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(timeout);
+        let read_chunk = Duration::from_millis(500);
+
+        py.allow_threads(|| {
+            loop {
+                if let Some(m) = re.find(&self.buffer) {
+                    let matched = m.as_str().to_string();
+                    self.buffer = self.buffer[m.end()..].to_string();
+                    dim_log!("[SSH Shell] expect({}) matched on {}", pattern, self.host);
+                    return Ok(matched);
+                }
+
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    let display_buf = self.redact.iter().fold(self.buffer.clone(), |s, secret| {
+                        s.replace(secret, "****")
+                    });
+                    return Err(PyTimeoutError::new_err(format!(
+                        "expect('{}') timed out after {}s on {}. Buffer:\n{}",
+                        pattern, timeout, self.host, display_buf
+                    )));
+                }
+
+                let chunk_timeout = remaining.min(read_chunk);
+                match Self::read_into_buffer(channel, &mut self.buffer, chunk_timeout) {
+                    Ok(true) => continue,
+                    Ok(false) => {
+                        return Err(PyRuntimeError::new_err(format!(
+                            "Channel closed while waiting for pattern '{}'",
+                            pattern
+                        )));
+                    }
+                    Err(_) => continue,
+                }
+            }
+        })
+    }
+
+    /// Send text to the shell's stdin (no newline appended).
+    #[pyo3(signature = (text))]
+    fn send(&mut self, py: Python<'_>, text: &str) -> PyResult<()> {
+        let channel = self
+            .channel
+            .as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("Shell session is closed"))?;
+
+        let display = self.redact.iter().fold(text.to_string(), |s, secret| {
+            s.replace(secret, "****")
+        });
+        dim_log!("[SSH Shell] send({:?}) to {}", display, self.host);
+
+        let data = text.as_bytes().to_vec();
+        let rt = crate::runtime::get()?;
+
+        py.allow_threads(|| {
+            rt.block_on(async {
+                channel
+                    .data(&data[..])
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!("Failed to send data: {e}")))
+            })
+        })
+    }
+
+    /// Send text followed by a newline.
+    #[pyo3(signature = (text))]
+    fn send_line(&mut self, py: Python<'_>, text: &str) -> PyResult<()> {
+        self.send(py, &format!("{}\n", text))
+    }
+
+    /// Read all output until a regex pattern is found.
+    ///
+    /// Unlike `expect()`, this returns ALL accumulated output up to
+    /// and including the match (not just the matched portion).
+    #[pyo3(signature = (pattern, timeout = 30))]
+    fn read_until(&mut self, py: Python<'_>, pattern: &str, timeout: u64) -> PyResult<String> {
+        let channel = self
+            .channel
+            .as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("Shell session is closed"))?;
+
+        let re = Regex::new(pattern)
+            .map_err(|e| PyRuntimeError::new_err(format!("Invalid regex: {e}")))?;
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(timeout);
+        let read_chunk = Duration::from_millis(500);
+
+        py.allow_threads(|| {
+            loop {
+                if let Some(m) = re.find(&self.buffer) {
+                    let output = self.buffer[..m.end()].to_string();
+                    self.buffer = self.buffer[m.end()..].to_string();
+                    return Ok(output);
+                }
+
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    return Err(PyTimeoutError::new_err(format!(
+                        "read_until('{}') timed out after {}s on {}",
+                        pattern, timeout, self.host
+                    )));
+                }
+
+                let chunk_timeout = remaining.min(read_chunk);
+                match Self::read_into_buffer(channel, &mut self.buffer, chunk_timeout) {
+                    Ok(true) => continue,
+                    Ok(false) => {
+                        return Err(PyRuntimeError::new_err(format!(
+                            "Channel closed while waiting for pattern '{}'",
+                            pattern
+                        )));
+                    }
+                    Err(_) => continue,
+                }
+            }
+        })
+    }
+
+    /// Read the next line of output.
+    #[pyo3(signature = (timeout = 10))]
+    fn read_line(&mut self, py: Python<'_>, timeout: u64) -> PyResult<String> {
+        self.read_until(py, "\n", timeout)
+    }
+
+    /// Return any data currently in the buffer without waiting.
+    fn peek(&self) -> String {
+        self.buffer.clone()
+    }
+
+    /// Close the shell session.
+    fn close(&mut self, py: Python<'_>) -> PyResult<()> {
+        if let Some(channel) = self.channel.take() {
+            let rt = crate::runtime::get()?;
+            py.allow_threads(|| {
+                rt.block_on(async {
+                    let _ = channel.eof().await;
+                    let _ = channel.close().await;
+                });
+            });
+            dim_log!("[SSH Shell] Closed PTY session on {}", self.host);
         }
         Ok(())
     }

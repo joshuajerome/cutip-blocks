@@ -11,11 +11,13 @@ macro_rules! dim_log {
 
 mod config;
 mod container;
+mod crypto;
 pub mod errors;
 pub mod file;
 mod http;
 mod kubectl;
 mod network;
+mod notify;
 mod pkg;
 pub mod runtime;
 mod service;
@@ -36,6 +38,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // SSH
     m.add_class::<ssh::ExecResult>()?;
     m.add_class::<ssh::SSHSession>()?;
+    m.add_class::<ssh::ShellSession>()?;
     m.add_function(wrap_pyfunction!(ssh::ssh_connect, m)?)?;
     // kubectl
     m.add_class::<kubectl::KubectlSession>()?;
@@ -90,5 +93,11 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(template::render, m)?)?;
     m.add_function(wrap_pyfunction!(template::render_string, m)?)?;
     m.add_function(wrap_pyfunction!(template::check, m)?)?;
+    // Crypto
+    m.add_function(wrap_pyfunction!(crypto::sign_rsa_sha256, m)?)?;
+    m.add_function(wrap_pyfunction!(crypto::base64_encode, m)?)?;
+    m.add_function(wrap_pyfunction!(crypto::base64_decode, m)?)?;
+    // Notify
+    m.add_function(wrap_pyfunction!(notify::send, m)?)?;
     Ok(())
 }

@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Generator
 
-from rsty._core import ExecResult, SSHSession, ssh_connect
+from rsty._core import ExecResult, SSHSession, ShellSession, ssh_connect
 
 
 @contextmanager
