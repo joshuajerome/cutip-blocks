@@ -1,6 +1,6 @@
 [package]
 name = "rsty_core"
-version = "0.4.4"
+version = "0.5.0"
 edition = "2021"
 
 [lib]
@@ -23,3 +23,6 @@ reqwest = { version = "0.12", features = ["json", "native-tls"], default-feature
 walkdir = "2"
 tar = "0.4"
 flate2 = "1"
+regex = "1"
+rsa = { version = "0.9", features = ["sha2"] }
+notify-rust = "4"
