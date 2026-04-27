@@ -198,6 +198,32 @@ def shell_with_pid(
         raise
 
 
+def upload(sesh: SSHSession, local: str, remote: str) -> None:
+    """Upload local file to remote path via SFTP.
+
+    Streams in chunks (handles arbitrarily large files). Overwrites the
+    remote file if it exists.
+
+    Example::
+
+        ssh.upload(sesh, "/tmp/build.tar.gz", "/tmp/build.tar.gz")
+    """
+    sesh.upload(local, remote)
+
+
+def download(sesh: SSHSession, remote: str, local: str) -> None:
+    """Download remote file to local path via SFTP.
+
+    Streams in chunks (handles arbitrarily large files). Overwrites the
+    local file if it exists.
+
+    Example::
+
+        ssh.download(sesh, "/var/log/app.log", "/tmp/app.log")
+    """
+    sesh.download(remote, local)
+
+
 def signal(sesh: SSHSession, pid: int, sig: str = "TERM") -> None:
     """Send a signal to a remote PID via ``kill``.
 

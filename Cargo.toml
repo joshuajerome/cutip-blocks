@@ -1,6 +1,6 @@
 [package]
 name = "rsty_core"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 
 [lib]
@@ -10,7 +10,8 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.24", features = ["extension-module"] }
 russh = "0.60"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"] }
+russh-sftp = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "fs", "io-util"] }
 async-trait = "0.1"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
