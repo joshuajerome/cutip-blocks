@@ -16,6 +16,10 @@ pub struct HttpResponse {
     pub text: String,
     #[pyo3(get)]
     pub ok: bool,
+    /// Raw response body bytes. Use this for binary downloads (tarballs,
+    /// images, anything not text). `text` is a UTF-8 decode of these bytes,
+    /// lossy for non-UTF-8 binary content.
+    pub raw: Vec<u8>,
 }
 
 #[pymethods]
@@ -27,12 +31,18 @@ impl HttpResponse {
         crate::file::json_value_to_py(py, &value)
     }
 
+    /// Raw response body as Python `bytes`. Use this for binary downloads.
+    #[getter]
+    fn bytes<'py>(&self, py: Python<'py>) -> Bound<'py, pyo3::types::PyBytes> {
+        pyo3::types::PyBytes::new(py, &self.raw)
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "HttpResponse(status={}, ok={}, len={})",
             self.status_code,
             self.ok,
-            self.text.len()
+            self.raw.len()
         )
     }
 }
@@ -204,13 +214,18 @@ fn build_client(verify_tls: bool, timeout_s: u64) -> PyResult<reqwest::Client> {
 async fn to_response(resp: reqwest::Response) -> PyResult<HttpResponse> {
     let status = resp.status().as_u16();
     let ok = resp.status().is_success();
-    let text = resp
-        .text()
+    let raw = resp
+        .bytes()
         .await
-        .map_err(|e| PyRuntimeError::new_err(format!("Failed to read response: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("Failed to read response: {e}")))?
+        .to_vec();
+    // text is a lossy UTF-8 decode of raw — fine for text responses, expected
+    // to contain replacement chars for binary content (caller should use .bytes).
+    let text = String::from_utf8_lossy(&raw).into_owned();
     Ok(HttpResponse {
         status_code: status,
         text,
         ok,
+        raw,
     })
 }

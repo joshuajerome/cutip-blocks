@@ -291,6 +291,10 @@ class HttpResponse:
     status_code: int
     text: str
     ok: bool
+    @property
+    def bytes(self) -> bytes:
+        """Raw response body. Use this for binary downloads."""
+        ...
     def json(self) -> Any:
         """Parse the response body as JSON, returning a Python dict."""
         ...
