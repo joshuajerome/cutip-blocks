@@ -15,6 +15,9 @@ use russh::client;
 use russh::keys::PublicKey;
 use russh::kex;
 use russh::ChannelMsg;
+use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::OpenFlags;
+use tokio::io::AsyncWriteExt;
 
 /// Result of a remote command execution.
 #[pyclass]
@@ -233,6 +236,178 @@ impl SSHSession {
             buffer: String::new(),
             host,
             redact,
+        })
+    }
+
+    /// Upload a local file to the remote host via SFTP.
+    ///
+    /// Streams the file in chunks (no full read into memory). Overwrites the
+    /// destination if it exists.
+    #[pyo3(signature = (local_path, remote_path))]
+    fn upload(&mut self, py: Python<'_>, local_path: &str, remote_path: &str) -> PyResult<()> {
+        let inner = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("SSH session is closed"))?;
+
+        let host = inner.host.clone();
+        let local = local_path.to_string();
+        let remote = remote_path.to_string();
+
+        dim_log!("[SFTP] upload {} -> {}:{}", local, host, remote);
+
+        let rt = crate::runtime::get()?;
+        py.allow_threads(|| {
+            rt.block_on(async {
+                let channel = inner
+                    .handle
+                    .channel_open_session()
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] upload to {}: failed to open channel: {}", host, e
+                    )))?;
+
+                channel
+                    .request_subsystem(true, "sftp")
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] upload to {}: failed to request sftp subsystem: {}", host, e
+                    )))?;
+
+                let sftp = SftpSession::new(channel.into_stream())
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] upload to {}: failed to start sftp session: {}", host, e
+                    )))?;
+
+                let mut local_file = tokio::fs::File::open(&local).await.map_err(|e| {
+                    PyRuntimeError::new_err(format!(
+                        "[SFTP] upload {}: failed to open local file: {}", local, e
+                    ))
+                })?;
+
+                let mut remote_file = sftp
+                    .open_with_flags(
+                        &remote,
+                        OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+                    )
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] upload to {}:{}: failed to open remote file: {}",
+                        host, remote, e
+                    )))?;
+
+                let copied = tokio::io::copy(&mut local_file, &mut remote_file)
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] upload {} -> {}:{}: copy error: {}",
+                        local, host, remote, e
+                    )))?;
+
+                remote_file.shutdown().await.map_err(|e| {
+                    PyRuntimeError::new_err(format!(
+                        "[SFTP] upload to {}:{}: failed to flush remote file: {}",
+                        host, remote, e
+                    ))
+                })?;
+
+                // Close the SFTP session explicitly. Errors here are non-fatal
+                // (the file is already written + flushed) but we log them.
+                if let Err(e) = sftp.close().await {
+                    dim_log!("[SFTP] upload to {}: warning closing session: {}", host, e);
+                }
+
+                dim_log!(
+                    "[SFTP] upload complete: {} -> {}:{} ({} bytes)",
+                    local, host, remote, copied
+                );
+                Ok(())
+            })
+        })
+    }
+
+    /// Download a file from the remote host via SFTP.
+    ///
+    /// Streams the file in chunks (no full read into memory). Overwrites the
+    /// destination if it exists.
+    #[pyo3(signature = (remote_path, local_path))]
+    fn download(&mut self, py: Python<'_>, remote_path: &str, local_path: &str) -> PyResult<()> {
+        let inner = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| PyRuntimeError::new_err("SSH session is closed"))?;
+
+        let host = inner.host.clone();
+        let local = local_path.to_string();
+        let remote = remote_path.to_string();
+
+        dim_log!("[SFTP] download {}:{} -> {}", host, remote, local);
+
+        let rt = crate::runtime::get()?;
+        py.allow_threads(|| {
+            rt.block_on(async {
+                let channel = inner
+                    .handle
+                    .channel_open_session()
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] download from {}: failed to open channel: {}", host, e
+                    )))?;
+
+                channel
+                    .request_subsystem(true, "sftp")
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] download from {}: failed to request sftp subsystem: {}",
+                        host, e
+                    )))?;
+
+                let sftp = SftpSession::new(channel.into_stream())
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] download from {}: failed to start sftp session: {}",
+                        host, e
+                    )))?;
+
+                let mut remote_file = sftp
+                    .open_with_flags(&remote, OpenFlags::READ)
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] download from {}:{}: failed to open remote file: {}",
+                        host, remote, e
+                    )))?;
+
+                let mut local_file = tokio::fs::File::create(&local).await.map_err(|e| {
+                    PyRuntimeError::new_err(format!(
+                        "[SFTP] download to {}: failed to create local file: {}", local, e
+                    ))
+                })?;
+
+                let copied = tokio::io::copy(&mut remote_file, &mut local_file)
+                    .await
+                    .map_err(|e| PyRuntimeError::new_err(format!(
+                        "[SFTP] download {}:{} -> {}: copy error: {}",
+                        host, remote, local, e
+                    )))?;
+
+                local_file.shutdown().await.map_err(|e| {
+                    PyRuntimeError::new_err(format!(
+                        "[SFTP] download to {}: failed to flush local file: {}", local, e
+                    ))
+                })?;
+
+                if let Err(e) = sftp.close().await {
+                    dim_log!(
+                        "[SFTP] download from {}: warning closing session: {}", host, e
+                    );
+                }
+
+                dim_log!(
+                    "[SFTP] download complete: {}:{} -> {} ({} bytes)",
+                    host, remote, local, copied
+                );
+                Ok(())
+            })
         })
     }
 }
