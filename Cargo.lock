@@ -2693,7 +2693,7 @@ dependencies = [
 
 [[package]]
 name = "rsty_core"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "async-trait",
  "base64",
