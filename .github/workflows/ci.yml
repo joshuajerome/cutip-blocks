@@ -118,13 +118,18 @@ jobs:
       - name: Smoke test
         run: |
           .venv/bin/python -c "
-          from cutip_blocks import ssh, kubectl, container, file, http
-          from cutip_blocks import validate, config, network, service
-          from cutip_blocks.blocks import ssh as ssh_compat
-          from cutip_blocks.utils import is_empty
+          from rsty import ssh, kubectl, container, file, http
+          from rsty import validate, config, network, service, notify, crypto, shell, svc, template, pkg
+          from rsty.utils import is_empty
           assert is_empty(None) == True
           assert is_empty('hello') == False
-          print('OK: all modules importable, is_empty works')
+          # Verify SFTP + streaming functions exist (added in 0.6.0/0.7.0)
+          assert callable(ssh.exec_stream)
+          assert callable(ssh.upload)
+          assert callable(ssh.download)
+          # Verify HttpResponse.bytes attribute (added in 0.7.1)
+          assert hasattr(http.HttpResponse, 'bytes')
+          print('OK: all modules importable, is_empty works, SFTP+streaming present')
           "
 
   # ── Docs Build ──────────────────────────────────────────────────────────────
