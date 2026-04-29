@@ -175,8 +175,13 @@ def shell_with_pid(
     """
     shell = sesh.shell()
     try:
+        # Background processes writing to a TOSTOP-enabled PTY get SIGTTOU
+        # → bash reports "Stopped" → wait returns 128+22 = 150. Disable
+        # TOSTOP up front. Also redirect stdin to /dev/null so commands
+        # like `make` don't fight for terminal input control.
         wrapped = (
-            f"({cmd}) & "
+            f"stty -tostop 2>/dev/null; "
+            f"({cmd}) </dev/null & "
             f"printf '\\n{_PID_SENTINEL}=%s\\n' \"$!\"; "
             f"wait $!; "
             f"printf '\\n{_EXIT_SENTINEL}=%s\\n' \"$?\""
