@@ -175,11 +175,17 @@ def shell_with_pid(
     """
     shell = sesh.shell()
     try:
-        # Background processes writing to a TOSTOP-enabled PTY get SIGTTOU
-        # → bash reports "Stopped" → wait returns 128+22 = 150. Disable
-        # TOSTOP up front. Also redirect stdin to /dev/null so commands
-        # like `make` don't fight for terminal input control.
+        # `set +m` disables bash job control. Without job control, bash
+        # leaves backgrounded processes in the SHELL's process group, which
+        # is also the PTY's foreground process group → kernel never sends
+        # SIGTTOU on terminal writes. Without this, `make &` writes its
+        # first line, gets SIGTTOU, bash reports "Stopped", `wait` returns
+        # 128+22=150, the workflow thinks the build failed before it
+        # actually did anything. (stty -tostop alone wasn't enough; the
+        # SSH PTY's mode persisted.)
+        # </dev/null prevents the cmd from competing for terminal input.
         wrapped = (
+            f"set +m; "
             f"stty -tostop 2>/dev/null; "
             f"({cmd}) </dev/null & "
             f"printf '\\n{_PID_SENTINEL}=%s\\n' \"$!\"; "
