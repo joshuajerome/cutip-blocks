@@ -18,12 +18,16 @@ def substitute_vars(
     vars: dict[str, str],
     secrets: dict[str, str] | None = None,
     paths: dict[str, str] | None = None,
+    globals: dict[str, str] | None = None,
 ) -> str:
-    """Replace ``{{ vars.key }}``, ``{{ paths.key }}``, and ``{{ secrets.key }}``
-    placeholders in text.
+    """Replace ``{{ vars.key }}``, ``{{ paths.key }}``, ``{{ secrets.key }}``,
+    and ``{{ globals.key.nested }}`` placeholders in text.
 
     Both spaced (``{{ ns.key }}``) and unspaced (``{{ns.key}}``) forms are
-    supported. ``paths`` and ``secrets`` are optional — omit them to leave
-    those placeholders untouched.
+    supported. ``paths``, ``secrets``, and ``globals`` are optional.
+
+    ``globals`` keys are pre-flattened dotted paths (e.g. ``passwords.v22``).
+    Use ``ctx.globals`` from a cutip workflow to get the flattened form for
+    free.
     """
-    return _substitute_vars(text, vars, secrets, paths)
+    return _substitute_vars(text, vars, secrets, paths, globals)
