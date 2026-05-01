@@ -17,6 +17,13 @@ def substitute_vars(
     text: str,
     vars: dict[str, str],
     secrets: dict[str, str] | None = None,
+    paths: dict[str, str] | None = None,
 ) -> str:
-    """Replace ``{{ vars.key }}`` and ``{{ secrets.key }}`` placeholders in text."""
-    return _substitute_vars(text, vars, secrets)
+    """Replace ``{{ vars.key }}``, ``{{ paths.key }}``, and ``{{ secrets.key }}``
+    placeholders in text.
+
+    Both spaced (``{{ ns.key }}``) and unspaced (``{{ns.key}}``) forms are
+    supported. ``paths`` and ``secrets`` are optional — omit them to leave
+    those placeholders untouched.
+    """
+    return _substitute_vars(text, vars, secrets, paths)
