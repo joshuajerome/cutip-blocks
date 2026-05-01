@@ -77,3 +77,37 @@ def test_substitute_vars_paths_namespace_isolated():
 def test_substitute_vars_paths_omitted_leaves_placeholder():
     result = config.substitute_vars("src={{ paths.repo }}", {})
     assert result == "src={{ paths.repo }}"
+
+
+def test_substitute_vars_globals_dotted():
+    result = config.substitute_vars(
+        "pw={{ globals.passwords.v22 }}",
+        {},
+        globals={"passwords.v22": "DefaultPw123"},
+    )
+    assert result == "pw=DefaultPw123"
+
+
+def test_substitute_vars_globals_no_spaces():
+    result = config.substitute_vars(
+        "pw={{globals.passwords.v22}}",
+        {},
+        globals={"passwords.v22": "DefaultPw123"},
+    )
+    assert result == "pw=DefaultPw123"
+
+
+def test_substitute_vars_all_four_namespaces():
+    result = config.substitute_vars(
+        "{{ vars.a }}|{{ paths.b }}|{{ secrets.c }}|{{ globals.d.e }}",
+        {"a": "VA"},
+        secrets={"c": "SC"},
+        paths={"b": "PB"},
+        globals={"d.e": "GD"},
+    )
+    assert result == "VA|PB|SC|GD"
+
+
+def test_substitute_vars_globals_omitted_leaves_placeholder():
+    result = config.substitute_vars("{{ globals.x.y }}", {})
+    assert result == "{{ globals.x.y }}"
