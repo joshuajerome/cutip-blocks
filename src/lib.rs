@@ -15,6 +15,7 @@ mod crypto;
 pub mod errors;
 pub mod file;
 mod http;
+mod js;
 mod kubectl;
 mod network;
 mod notify;
@@ -61,6 +62,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(file::replace, m)?)?;
     m.add_function(wrap_pyfunction!(file::mkdir, m)?)?;
     m.add_function(wrap_pyfunction!(file::is_empty, m)?)?;
+    // JS
+    m.add_function(wrap_pyfunction!(js::js_read_module, m)?)?;
+    m.add_function(wrap_pyfunction!(js::js_write_module, m)?)?;
     // HTTP
     m.add_class::<http::HttpResponse>()?;
     m.add_function(wrap_pyfunction!(http::get, m)?)?;
