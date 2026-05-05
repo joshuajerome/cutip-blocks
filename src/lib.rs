@@ -67,10 +67,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(js::js_write_module, m)?)?;
     // HTTP
     m.add_class::<http::HttpResponse>()?;
+    m.add_class::<http::HttpSession>()?;
     m.add_function(wrap_pyfunction!(http::get, m)?)?;
     m.add_function(wrap_pyfunction!(http::post, m)?)?;
     m.add_function(wrap_pyfunction!(http::put, m)?)?;
     m.add_function(wrap_pyfunction!(http::delete, m)?)?;
+    m.add_function(wrap_pyfunction!(http::http_session, m)?)?;
     // Service
     m.add_function(wrap_pyfunction!(service::poll_until_ready, m)?)?;
     m.add_function(wrap_pyfunction!(service::wait_for_exit, m)?)?;
