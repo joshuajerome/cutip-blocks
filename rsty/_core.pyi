@@ -295,9 +295,59 @@ class HttpResponse:
     def bytes(self) -> bytes:
         """Raw response body. Use this for binary downloads."""
         ...
+    @property
+    def headers(self) -> dict[str, str]:
+        """Response headers, lowercase keys, comma-joined values.
+
+        ``set-cookie`` is excluded — read it from :attr:`set_cookies`.
+        """
+        ...
+    @property
+    def set_cookies(self) -> list[str]:
+        """All ``Set-Cookie`` header values from the response, in order."""
+        ...
     def json(self) -> Any:
         """Parse the response body as JSON, returning a Python dict."""
         ...
+
+class HttpSession:
+    """Persistent HTTP session with cookie jar and configurable redirects.
+
+    Created via :func:`http_session`. Use as a context manager.
+    """
+    def get(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> HttpResponse: ...
+    def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        body: str | None = None,
+        form: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> HttpResponse: ...
+    def put(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        body: str | None = None,
+        form: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> HttpResponse: ...
+    def delete(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> HttpResponse: ...
+    def close(self) -> None: ...
+    def __enter__(self) -> HttpSession: ...
+    def __exit__(self, *exc: Any) -> None: ...
 
 def get(
     url: str,
@@ -314,11 +364,18 @@ def post(
     *,
     json: dict[str, Any] | None = None,
     body: str | None = None,
+    form: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
     verify_tls: bool = True,
     timeout_s: int = 30,
 ) -> HttpResponse:
-    """Send an HTTP POST request with JSON body."""
+    """Send an HTTP POST request.
+
+    Body source is one of (mutually exclusive):
+      * ``json`` — dict serialized as ``application/json``.
+      * ``form`` — dict serialized as ``application/x-www-form-urlencoded``.
+      * ``body`` — raw string body.
+    """
     ...
 
 def put(
@@ -326,11 +383,12 @@ def put(
     *,
     json: dict[str, Any] | None = None,
     body: str | None = None,
+    form: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
     verify_tls: bool = True,
     timeout_s: int = 30,
 ) -> HttpResponse:
-    """Send an HTTP PUT request with JSON body."""
+    """Send an HTTP PUT request. Same body semantics as :func:`post`."""
     ...
 
 def delete(
@@ -341,6 +399,16 @@ def delete(
     timeout_s: int = 30,
 ) -> HttpResponse:
     """Send an HTTP DELETE request."""
+    ...
+
+def http_session(
+    *,
+    verify_tls: bool = True,
+    follow_redirects: bool = True,
+    timeout_s: int = 30,
+    headers: dict[str, str] | None = None,
+) -> HttpSession:
+    """Open a persistent HTTP session (cookie jar + redirect control)."""
     ...
 
 # ── network ───────────────────────────────────────────────────────────────
