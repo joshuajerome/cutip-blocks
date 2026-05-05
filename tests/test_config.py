@@ -111,3 +111,18 @@ def test_substitute_vars_all_four_namespaces():
 def test_substitute_vars_globals_omitted_leaves_placeholder():
     result = config.substitute_vars("{{ globals.x.y }}", {})
     assert result == "{{ globals.x.y }}"
+
+
+def test_substitute_vars_asymmetric_whitespace():
+    """All whitespace variants match (asymmetric typos shouldn't fail silently)."""
+    cases = [
+        "{{globals.x}}",
+        "{{ globals.x }}",
+        "{{ globals.x}}",
+        "{{globals.x }}",
+        "{{  globals.x  }}",
+        "{{\tglobals.x\t}}",
+    ]
+    for c in cases:
+        result = config.substitute_vars(c, {}, globals={"x": "Y"})
+        assert result == "Y", f"asymmetric form failed: {c!r}"

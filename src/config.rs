@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use pyo3::prelude::*;
+use regex::Regex;
 
 /// Replace `{{ key }}` placeholders in a template string with values from a vars dict.
 #[pyfunction]
@@ -22,8 +23,9 @@ pub fn render_template(template: &str, vars: HashMap<String, String>) -> String 
 /// Replace `{{ vars.key }}`, `{{ paths.key }}`, `{{ secrets.key }}`, and
 /// `{{ globals.key.nested }}` placeholders in text.
 ///
-/// Both spaced (`{{ ns.key }}`) and unspaced (`{{ns.key}}`) forms are
-/// supported. Substitution order: vars → paths → secrets → globals.
+/// Whitespace-tolerant: `{{ns.key}}`, `{{ ns.key }}`, `{{ ns.key}}`,
+/// `{{ns.key }}`, multi-space, and tabs all match. Substitution order:
+/// vars → paths → secrets → globals.
 ///
 /// `globals` keys are pre-flattened dotted paths (e.g. `"passwords.v22"`).
 /// Use ``rsty.config.flatten`` (Python helper) to convert a nested dict
@@ -38,49 +40,32 @@ pub fn substitute_vars(
     globals: Option<HashMap<String, String>>,
 ) -> String {
     let mut result = text.to_string();
-    for (key, value) in &vars {
-        let patterns = [
-            format!("{{{{ vars.{key} }}}}"),
-            format!("{{{{vars.{key}}}}}"),
-        ];
-        for pattern in &patterns {
-            result = result.replace(pattern, value);
-        }
-    }
+    apply_namespace(&mut result, "vars", &vars);
     if let Some(paths) = &paths {
-        for (key, value) in paths {
-            let patterns = [
-                format!("{{{{ paths.{key} }}}}"),
-                format!("{{{{paths.{key}}}}}"),
-            ];
-            for pattern in &patterns {
-                result = result.replace(pattern, value);
-            }
-        }
+        apply_namespace(&mut result, "paths", paths);
     }
     if let Some(secrets) = &secrets {
-        for (key, value) in secrets {
-            let patterns = [
-                format!("{{{{ secrets.{key} }}}}"),
-                format!("{{{{secrets.{key}}}}}"),
-            ];
-            for pattern in &patterns {
-                result = result.replace(pattern, value);
-            }
-        }
+        apply_namespace(&mut result, "secrets", secrets);
     }
     if let Some(globals) = &globals {
-        for (key, value) in globals {
-            let patterns = [
-                format!("{{{{ globals.{key} }}}}"),
-                format!("{{{{globals.{key}}}}}"),
-            ];
-            for pattern in &patterns {
-                result = result.replace(pattern, value);
-            }
-        }
+        apply_namespace(&mut result, "globals", globals);
     }
     result
+}
+
+/// Run regex substitution for one namespace. Pattern: `\{\{\s*ns\.key\s*\}\}`
+/// — any (or no) whitespace inside the braces.
+fn apply_namespace(result: &mut String, ns: &str, mapping: &HashMap<String, String>) {
+    for (key, value) in mapping {
+        let pattern = format!(
+            r"\{{\{{\s*{}\.{}\s*\}}\}}",
+            regex::escape(ns),
+            regex::escape(key)
+        );
+        if let Ok(re) = Regex::new(&pattern) {
+            *result = re.replace_all(result, regex::NoExpand(value)).into_owned();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -176,5 +161,22 @@ mod tests {
     fn globals_omitted_leaves_placeholder() {
         let result = substitute_vars("{{ globals.x.y }}", map(&[]), None, None, None);
         assert_eq!(result, "{{ globals.x.y }}");
+    }
+
+    #[test]
+    fn asymmetric_whitespace_all_match() {
+        // Common typo cases: space on one side only, tabs, multi-space.
+        let cases = [
+            "{{globals.x}}",
+            "{{ globals.x }}",
+            "{{ globals.x}}",    // left-only
+            "{{globals.x }}",    // right-only
+            "{{  globals.x  }}", // multi-space
+            "{{\tglobals.x\t}}", // tabs
+        ];
+        for c in cases {
+            let result = substitute_vars(c, map(&[]), None, None, Some(map(&[("x", "Y")])));
+            assert_eq!(result, "Y", "asymmetric form failed: {c:?}");
+        }
     }
 }
