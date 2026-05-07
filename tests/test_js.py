@@ -14,13 +14,13 @@ SAMPLE_NAMED = """const PROXY_CONFIG = {
     target: 'http://100.94.115.88',
     secure: false,
     logLevel: 'debug',
-    auth: 'sfmadmin:Dellsfm@force10',
+    auth: 'admin:secret123',
   },
   '/api': {
     target: 'http://100.94.115.88',
     secure: false,
     logLevel: 'debug',
-    auth: 'sfmadmin:Dellsfm@force10',
+    auth: 'admin:secret123',
   },
 };
 
@@ -42,7 +42,7 @@ def test_read_module_named(tmp_path: Path):
     assert set(config.keys()) == {"/redfish", "/api"}
     assert config["/redfish"]["target"] == "http://100.94.115.88"
     assert config["/redfish"]["secure"] is False
-    assert config["/api"]["auth"] == "sfmadmin:Dellsfm@force10"
+    assert config["/api"]["auth"] == "admin:secret123"
 
 
 def test_read_module_direct(tmp_path: Path):
@@ -109,7 +109,7 @@ def test_unknown_keys_preserved(tmp_path: Path):
     secure: false,
     logLevel: 'debug',
     auth: 'u:p',
-    customKey: 'whatever-snf-gui-might-add',
+    customKey: 'some-extra-key',
   },
 };
 
@@ -118,12 +118,12 @@ module.exports = PROXY_CONFIG;
     p = tmp_path / "proxy.conf.json"
     p.write_text(src)
     config = js.read_module(p)
-    assert config["/redfish"]["customKey"] == "whatever-snf-gui-might-add"
+    assert config["/redfish"]["customKey"] == "some-extra-key"
     # Mutate target only; customKey untouched
     config["/redfish"]["target"] = "http://10.0.0.1"
     js.write_module(p, config)
     again = js.read_module(p)
-    assert again["/redfish"]["customKey"] == "whatever-snf-gui-might-add"
+    assert again["/redfish"]["customKey"] == "some-extra-key"
     assert again["/redfish"]["target"] == "http://10.0.0.1"
 
 

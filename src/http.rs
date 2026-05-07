@@ -3,8 +3,8 @@
 //! Two surfaces:
 //! - Module-level `get`/`post`/`put`/`delete` for one-shot requests.
 //! - `HttpSession` for stateful flows that need a persistent cookie jar
-//!   or non-default redirect handling (e.g. Keycloak's
-//!   authorization-code + UPDATE_PASSWORD dance).
+//!   or non-default redirect handling (e.g. OAuth2 authorization-code
+//!   flows where the caller drives the form posts directly).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -228,7 +228,7 @@ pub fn delete(
 /// Persistent HTTP session. Created via `http_session()`.
 ///
 /// Holds a single `reqwest::Client` that:
-///   - persists cookies across requests (essential for OAuth2 / Keycloak)
+///   - persists cookies across requests (essential for OAuth2 flows)
 ///   - uses a configurable redirect policy (`follow_redirects=False` to
 ///     read 302 `Location` headers manually)
 ///   - applies default headers to every request
@@ -405,7 +405,7 @@ impl HttpSession {
 
 /// Open a persistent HTTP session.
 ///
-/// - `verify_tls=False` accepts self-signed certs (SFM/dev VMs).
+/// - `verify_tls=False` accepts self-signed certs (typical for dev VMs).
 /// - `follow_redirects=False` returns the 3xx response directly so the
 ///   caller can read the `Location` header (needed for OAuth2 flows).
 /// - `headers` are sent on every request unless overridden per-call.
