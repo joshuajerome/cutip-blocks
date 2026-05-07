@@ -58,6 +58,12 @@ jobs:
         with:
           target: x86_64-unknown-linux-gnu
           manylinux: 2_28
+          # native-tls-vendored compiles OpenSSL from source via openssl-src,
+          # which uses OpenSSL's perl-based Configure script. The minimal
+          # manylinux_2_28 container ships Perl without IPC::Cmd, so install
+          # it before maturin runs.
+          before-script-linux: |
+            dnf install -y perl-IPC-Cmd
           args: --release --interpreter python${{ matrix.python }} --features pyo3/extension-module --out dist
 
       - name: Upload wheel
