@@ -36,21 +36,45 @@ jobs:
       - name: Run tests
         run: .venv/bin/pytest tests/ -v
 
-  build-wheels:
-    name: Build (${{ matrix.os }})
+  # ── Linux ────────────────────────────────────────────────────────────────
+  # Built inside a manylinux_2_28 container (PyO3/maturin-action) so the
+  # resulting wheel is installable on glibc>=2.28. Covers Debian 11
+  # (bullseye, glibc 2.31, used by python:3.11-slim-bullseye), Debian 12,
+  # Ubuntu 20.04+, and most enterprise distros. Earlier rsty releases
+  # produced manylinux_2_34 wheels which don't install on Debian 11.
+  build-linux:
+    name: Build linux py${{ matrix.python }}
     needs: test
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
-        include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            target: x86_64-apple-darwin
-          - os: macos-latest
-            target: aarch64-apple-darwin
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-unknown-linux-gnu
+          manylinux: 2_28
+          args: --release --interpreter python${{ matrix.python }} --features pyo3/extension-module --out dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-py${{ matrix.python }}
+          path: dist/*.whl
+
+  # ── macOS ────────────────────────────────────────────────────────────────
+  build-macos:
+    name: Build macos ${{ matrix.target }} py${{ matrix.python }}
+    needs: test
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+        python: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -64,22 +88,64 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
 
       - name: Build wheel
         run: |
           pip install maturin
-          maturin build --release --target ${{ matrix.target }} --features pyo3/extension-module
+          maturin build --release \
+            --target ${{ matrix.target }} \
+            --interpreter python${{ matrix.python }} \
+            --features pyo3/extension-module \
+            --out dist
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.target }}
-          path: target/wheels/*.whl
+          name: wheel-macos-${{ matrix.target }}-py${{ matrix.python }}
+          path: dist/*.whl
+
+  # ── Windows ──────────────────────────────────────────────────────────────
+  build-windows:
+    name: Build windows py${{ matrix.python }}
+    needs: test
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+          targets: x86_64-pc-windows-msvc
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Build wheel
+        run: |
+          pip install maturin
+          maturin build --release `
+            --target x86_64-pc-windows-msvc `
+            --interpreter python${{ matrix.python }} `
+            --features pyo3/extension-module `
+            --out dist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-windows-py${{ matrix.python }}
+          path: dist/*.whl
 
   release:
     name: GitHub Release
-    needs: build-wheels
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
 
     permissions:
