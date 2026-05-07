@@ -96,8 +96,9 @@ def session(
     """Open a persistent HTTP session.
 
     The session keeps a cookie jar across requests and lets you choose
-    whether to auto-follow redirects. Useful for OAuth2 / Keycloak flows
-    where you need to read the ``Location`` header on a 302 yourself.
+    whether to auto-follow redirects. Useful for OAuth2 / form-based
+    login flows where you need to read the ``Location`` header on a
+    302 yourself.
 
     Use as a context manager::
 

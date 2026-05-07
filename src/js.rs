@@ -329,13 +329,13 @@ mod tests {
     target: 'http://100.94.115.88',
     secure: false,
     logLevel: 'debug',
-    auth: 'sfmadmin:Dellsfm@force10',
+    auth: 'admin:secret123',
   },
   '/api': {
     target: 'http://100.94.115.88',
     secure: false,
     logLevel: 'debug',
-    auth: 'sfmadmin:Dellsfm@force10',
+    auth: 'admin:secret123',
   },
 };
 

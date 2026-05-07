@@ -94,7 +94,7 @@ def exec_stream(
         sesh = ssh.open(host=h, username=u, password=p)
         result = ssh.exec_stream(
             sesh,
-            "make blueprint-manager",
+            "make build",
             on_line=lambda line: print(f"[build] {line}"),
         )
         if result.exit_code != 0:
